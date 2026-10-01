@@ -1,19 +1,24 @@
 # syntax=docker/dockerfile:1.7
 FROM python:3.12-alpine
 
+ARG APP_VERSION=dev
+ARG APP_RELEASE_DATE=
+ARG REPO_URL=https://github.com/fschlag/dnsmasq-leases-ui
+
+ENV APP_VERSION=${APP_VERSION} \
+    APP_RELEASE_DATE=${APP_RELEASE_DATE} \
+    REPO_URL=${REPO_URL}
+
 LABEL org.opencontainers.image.title="dnsmasq-leases-ui" \
       org.opencontainers.image.description="Web UI for dnsmasq DHCP leases" \
       org.opencontainers.image.source="https://github.com/fschlag/dnsmasq-leases-ui" \
       org.opencontainers.image.url="https://github.com/fschlag/dnsmasq-leases-ui" \
       org.opencontainers.image.licenses="MIT"
 
-ARG APP_VERSION=dev
-ARG APP_RELEASE_DATE=
-ENV APP_VERSION=${APP_VERSION} APP_RELEASE_DATE=${APP_RELEASE_DATE}
-
 WORKDIR /app
 
 COPY requirements.txt ./
+
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY templates ./templates
