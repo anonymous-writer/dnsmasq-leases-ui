@@ -12,7 +12,7 @@ from ipaddress import ip_address
 
 from flask import Flask, jsonify, render_template
 
-__version__ = os.environ.get("APP_VERSION", "V1.1.2")
+__version__ = os.environ.get("APP_VERSION", "vdev")
 __release_date__ = os.environ.get("APP_RELEASE_DATE", "")
 REPO_URL = os.environ.get(
     "REPO_URL",
