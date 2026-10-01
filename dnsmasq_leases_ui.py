@@ -1,4 +1,4 @@
-"""Web UI for dnsmasq leases file."""
+""" Web UI for dnsmasq leases file."""
 
 import os
 import re
