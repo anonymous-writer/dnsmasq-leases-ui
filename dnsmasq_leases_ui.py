@@ -1,4 +1,4 @@
-""" Web UI for dnsmasq leases file."""
+"""Web UI for dnsmasq leases file."""
 
 import os
 import re
@@ -12,12 +12,9 @@ from ipaddress import ip_address
 
 from flask import Flask, jsonify, render_template
 
-__version__ = os.environ.get("APP_VERSION", "vdev")
+__version__ = os.environ.get("APP_VERSION", "dev")
 __release_date__ = os.environ.get("APP_RELEASE_DATE", "")
-REPO_URL = os.environ.get(
-    "REPO_URL",
-    "https://github.com/fschlag/dnsmasq-leases-ui",
-)
+REPO_URL = "https://github.com/fschlag/dnsmasq-leases-ui"
 
 DNSMASQ_LEASES_FILE = os.environ.get(
     "DNSMASQ_LEASES_FILE",
