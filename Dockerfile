@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.1.7
 FROM python:3.12-alpine
 
 ARG APP_VERSION=dev
