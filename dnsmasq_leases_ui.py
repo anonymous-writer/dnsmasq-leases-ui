@@ -89,9 +89,7 @@ class LeaseEntry:
         if leasetime == "0":
             lease_end = "Never"
         else:
-            lease_end = datetime.fromtimestamp(int(leasetime)).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
+            lease_end = datetime.fromtimestamp(int(leasetime)).strftime("%Y-%m-%d %H:%M:%S")
 
         return cls(
             staticIP=reserved,
@@ -203,9 +201,7 @@ class DhcpReservations:
                     if client_id and client_id != "*":
                         self.identifiers.add(self._normalise_identifier(client_id))
 
-                elif not lower.startswith(
-                    ("set:", "tag:", "net:", "bootfile=")
-                ):
+                elif not lower.startswith(("set:", "tag:", "net:", "bootfile=")):
                     self.identifiers.add(self._normalise_identifier(first))
 
     def matches(
@@ -227,18 +223,10 @@ class DhcpReservations:
             return True
 
         # 3. MAC/client identifier match.
-        if (
-            identifier
-            and self._normalise_identifier(identifier)
-            in self.identifiers
-        ):
+        if identifier and self._normalise_identifier(identifier) in self.identifiers:
             return True
 
-        return bool(
-            client_id
-            and self._normalise_identifier(client_id)
-            in self.identifiers
-        )
+        return bool(client_id and self._normalise_identifier(client_id) in self.identifiers)
 
 
 def read_reservations() -> DhcpReservations:
@@ -422,9 +410,7 @@ def get_leases():
         )
         return jsonify(error="leases file unavailable"), 503
 
-    return jsonify(
-        leases=[asdict(lease) for lease in leases]
-    )
+    return jsonify(leases=[asdict(lease) for lease in leases])
 
 
 if __name__ == "__main__":
