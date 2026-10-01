@@ -4,13 +4,13 @@ import os
 import re
 import ssl
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from http.client import HTTPConnection, HTTPSConnection
 from ipaddress import ip_address
 
 from flask import Flask, jsonify, render_template
-
 
 __version__ = os.environ.get("APP_VERSION", "dev")
 __release_date__ = os.environ.get("APP_RELEASE_DATE", "")
@@ -300,10 +300,8 @@ def _check_http(host: str, use_https: bool) -> str | None:
         pass
     finally:
         if connection is not None:
-            try:
+            with suppress(OSError):
                 connection.close()
-            except OSError:
-                pass
 
     return None
 
@@ -348,7 +346,7 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
             )
         )
 
-    for lease, url in zip(leases, urls):
+    for lease, url in zip(leases, urls, strict=True):
         lease.webUrl = url
 
 
