@@ -1,9 +1,8 @@
 name: Build and publish Docker image
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
   workflow_dispatch:
 
 env:
@@ -53,6 +52,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            APP_VERSION=${{ github.ref_name }}
-            APP_RELEASE_DATE=${{ github.event.head_commit.timestamp }}
+            APP_VERSION=${{ github.event.release.tag_name || github.ref_name }}
+            APP_RELEASE_DATE=${{ github.event.release.published_at || github.event.head_commit.timestamp }}
             REPO_URL=https://github.com/${{ github.repository }}
