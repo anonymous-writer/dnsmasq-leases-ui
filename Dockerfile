@@ -5,6 +5,10 @@ ARG APP_VERSION=dev
 ARG APP_RELEASE_DATE=
 ARG REPO_URL=https://github.com/fschlag/dnsmasq-leases-ui
 
+ARG APP_VERSION=dev
+ARG APP_RELEASE_DATE=
+ARG REPO_URL=https://github.com/fschlag/dnsmasq-leases-ui
+
 ENV APP_VERSION=${APP_VERSION} \
     APP_RELEASE_DATE=${APP_RELEASE_DATE} \
     REPO_URL=${REPO_URL}
