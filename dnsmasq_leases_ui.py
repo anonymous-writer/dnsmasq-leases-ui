@@ -436,7 +436,34 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
         lease.webHostUrl = url
 
 
-def read_leases() -> list[LeaseEntry]:
+
+def add_hostname_urls(leases: list[LeaseEntry]) -> None:
+    """Check local hostname candidates in parallel and attach hostname URLs."""
+    if not leases:
+        return
+
+    worker_count = min(
+        max(1, WEB_UI_MAX_WORKERS),
+        len(leases),
+    )
+
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        urls = list(
+            executor.map(
+                lambda lease: check_web_hostname(
+                    lease.ipAddress,
+                    lease.name,
+                ),
+                leases,
+            )
+        )
+
+    for lease, url in zip(leases, urls, strict=True):
+        lease.webHostUrl = url
+
+
+
+def read_leases(*, check_web: bool = True) -> list[LeaseEntry]:
     leases: list[LeaseEntry] = []
     reservations = read_reservations()
 
@@ -465,7 +492,8 @@ def read_leases() -> list[LeaseEntry]:
                 )
             )
 
-    add_web_urls(leases)
+    if check_web:
+        add_web_urls(leases)
 
     return leases
 
@@ -477,6 +505,31 @@ def index():
         version=__version__,
         release_date=__release_date__,
         repo_url=REPO_URL,
+    )
+
+
+@app.route("/hostname-links")
+def get_hostname_links():
+    try:
+        leases = read_leases(check_web=False)
+        add_hostname_urls(leases)
+    except OSError as exc:
+        app.logger.warning(
+            "cannot read %s: %s",
+            DNSMASQ_LEASES_FILE,
+            exc,
+        )
+        return jsonify(error="leases file unavailable"), 503
+
+    return jsonify(
+        leases=[
+            {
+                "ipAddress": lease.ipAddress,
+                "webHostUrl": lease.webHostUrl,
+            }
+            for lease in leases
+            if lease.webHostUrl
+        ]
     )
 
 
