@@ -427,15 +427,6 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
     for lease, url in zip(leases, urls, strict=True):
         lease.webUrl = url
 
-    hostname_urls = [
-        check_web_hostname(lease.ipAddress, lease.name)
-        for lease in leases
-    ]
-
-    for lease, url in zip(leases, hostname_urls, strict=True):
-        lease.webHostUrl = url
-
-
 
 def add_hostname_urls(leases: list[LeaseEntry]) -> None:
     """Check local hostname candidates in parallel and attach hostname URLs."""
