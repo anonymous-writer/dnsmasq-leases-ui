@@ -29,6 +29,8 @@ themeBtn.addEventListener('click', () => {
 let leases = [];
 let filterQuery = '';
 let currentSort = loadSort();
+let hostnameLinksLoaded = false;
+let hostnameLinksLoading = false;
 
 
 function loadSort() {
@@ -91,6 +93,42 @@ function saveHostnameMode(enabled) {
 		);
 	} catch {}
 }
+
+async function loadHostnameLinks() {
+	if (hostnameLinksLoaded || hostnameLinksLoading) {
+		return;
+	}
+
+	hostnameLinksLoading = true;
+
+	try {
+		const r = await fetch(`${SCRIPT_ROOT}/hostname-links`);
+
+		if (!r.ok) {
+			throw new Error(`HTTP ${r.status}`);
+		}
+
+		const data = await r.json();
+		const linksByIp = new Map(
+			(data.leases ?? []).map(row => [
+				row.ipAddress,
+				row.webHostUrl,
+			])
+		);
+
+		for (const lease of leases) {
+			lease.webHostUrl = linksByIp.get(lease.ipAddress) ?? null;
+		}
+
+		hostnameLinksLoaded = true;
+		render();
+	} catch (err) {
+		console.error('Failed to load hostname links:', err);
+	} finally {
+		hostnameLinksLoading = false;
+	}
+}
+
 
 function linkForLease(row) {
 	if (hostnameToggle?.checked && row.webHostUrl) {
@@ -271,7 +309,12 @@ if (hostnameToggle) {
 	hostnameToggle.checked = loadHostnameMode();
 	hostnameToggle.addEventListener('change', () => {
 		saveHostnameMode(hostnameToggle.checked);
-		render();
+
+		if (hostnameToggle.checked) {
+			void loadHostnameLinks();
+		} else {
+			render();
+		}
 	});
 }
 
