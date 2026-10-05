@@ -138,6 +138,18 @@
 			border: 1px solid var(--border);
 			border-radius: 4px;
 		}
+		#link-mode {
+			display: inline-flex;
+			align-items: center;
+			gap: 0.4rem;
+			white-space: nowrap;
+			color: var(--muted);
+			font-size: 0.85rem;
+		}
+		#link-mode input {
+			accent-color: var(--accent);
+		}
+
 		#search:focus-visible {
 			outline: 2px solid var(--accent);
 			outline-offset: 1px;
@@ -149,6 +161,10 @@
 <body data-script-root="{{ request.script_root }}">
 <div id="toolbar">
 	<input id="search" type="search" placeholder="Filter leases…" aria-label="Filter leases" autocomplete="off">
+	<label id="link-mode" title="Hostname verwenden, wenn verfügbar">
+		<input id="hostname-toggle" type="checkbox">
+		Hostname
+	</label>
 	<button id="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
 		<svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 			<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
