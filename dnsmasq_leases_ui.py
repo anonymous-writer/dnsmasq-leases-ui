@@ -2,6 +2,7 @@
 
 import os
 import re
+import socket
 import ssl
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
@@ -62,6 +63,7 @@ class LeaseEntry:
     ipAddress: str
     name: str
     webUrl: str | None = None
+    webHostUrl: str | None = None
 
     @classmethod
     def from_line(
@@ -247,6 +249,79 @@ def read_reservations() -> DhcpReservations:
     return reservations
 
 
+def _local_search_domains() -> list[str]:
+    """Return local DNS search/domain suffixes from resolv.conf."""
+    domains: list[str] = []
+    try:
+        with open("/etc/resolv.conf", encoding="utf-8") as f:
+            for line in f:
+                parts = line.split()
+                if not parts or parts[0] not in {"search", "domain"}:
+                    continue
+                for value in parts[1:]:
+                    value = value.strip().strip(".")
+                    if value and value not in domains:
+                        domains.append(value)
+    except OSError:
+        pass
+    return domains
+
+
+def _hostname_candidates(name: str) -> list[str]:
+    """Build local hostname candidates for a lease name."""
+    if not name or name == "*":
+        return []
+    hostname = name.rstrip(".")
+    if "." in hostname:
+        return [hostname]
+
+    candidates: list[str] = []
+    for suffix in _local_search_domains():
+        candidate = f"{hostname}.{suffix}"
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    local_candidate = f"{hostname}.local"
+    if local_candidate not in candidates:
+        candidates.append(local_candidate)
+
+    return candidates
+
+
+def _host_resolves_to_ip(hostname: str, ip: str) -> bool:
+    """Return True when hostname resolves to the lease IP."""
+    try:
+        resolved = {
+            result[4][0]
+            for result in socket.getaddrinfo(
+                hostname,
+                None,
+                socket.AF_UNSPEC,
+                socket.SOCK_STREAM,
+            )
+        }
+        return ip in resolved
+    except OSError:
+        return False
+
+
+def check_web_hostname(ip: str, name: str) -> str | None:
+    """Return a reachable local hostname URL matching the lease IP."""
+    for hostname in _hostname_candidates(name):
+        if not _host_resolves_to_ip(hostname, ip):
+            continue
+
+        url = _check_http(hostname, use_https=False)
+        if url is not None:
+            return url
+
+        url = _check_http(hostname, use_https=True)
+        if url is not None:
+            return url
+
+    return None
+
+
 def _check_http(host: str, use_https: bool) -> str | None:
     """
     Check whether a host responds as an HTTP/HTTPS server.
@@ -351,6 +426,14 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
 
     for lease, url in zip(leases, urls, strict=True):
         lease.webUrl = url
+
+    hostname_urls = [
+        check_web_hostname(lease.ipAddress, lease.name)
+        for lease in leases
+    ]
+
+    for lease, url in zip(leases, hostname_urls, strict=True):
+        lease.webHostUrl = url
 
 
 def read_leases() -> list[LeaseEntry]:
