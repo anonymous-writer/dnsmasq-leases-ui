@@ -5,7 +5,6 @@ import re
 import socket
 import ssl
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import suppress
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from http.client import HTTPConnection, HTTPSConnection
@@ -13,6 +12,7 @@ from ipaddress import ip_address
 from urllib.parse import urlsplit
 
 from flask import Flask, jsonify, render_template
+
 
 __version__ = os.environ.get("APP_VERSION", "dev")
 __release_date__ = os.environ.get("APP_RELEASE_DATE", "")
@@ -95,7 +95,9 @@ class LeaseEntry:
         if leasetime == "0":
             lease_end = "Never"
         else:
-            lease_end = datetime.fromtimestamp(int(leasetime)).strftime("%Y-%m-%d %H:%M:%S")
+            lease_end = datetime.fromtimestamp(
+                int(leasetime)
+            ).strftime("%Y-%m-%d %H:%M:%S")
 
         return cls(
             staticIP=reserved,
@@ -205,10 +207,16 @@ class DhcpReservations:
                     client_id = first[3:].strip()
 
                     if client_id and client_id != "*":
-                        self.identifiers.add(self._normalise_identifier(client_id))
+                        self.identifiers.add(
+                            self._normalise_identifier(client_id)
+                        )
 
-                elif not lower.startswith(("set:", "tag:", "net:", "bootfile=")):
-                    self.identifiers.add(self._normalise_identifier(first))
+                elif not lower.startswith(
+                    ("set:", "tag:", "net:", "bootfile=")
+                ):
+                    self.identifiers.add(
+                        self._normalise_identifier(first)
+                    )
 
     def matches(
         self,
@@ -229,10 +237,18 @@ class DhcpReservations:
             return True
 
         # 3. MAC/client identifier match.
-        if identifier and self._normalise_identifier(identifier) in self.identifiers:
+        if (
+            identifier
+            and self._normalise_identifier(identifier)
+            in self.identifiers
+        ):
             return True
 
-        return bool(client_id and self._normalise_identifier(client_id) in self.identifiers)
+        return bool(
+            client_id
+            and self._normalise_identifier(client_id)
+            in self.identifiers
+        )
 
 
 def read_reservations() -> DhcpReservations:
@@ -248,79 +264,6 @@ def read_reservations() -> DhcpReservations:
         pass
 
     return reservations
-
-
-def _local_search_domains() -> list[str]:
-    """Return local DNS search/domain suffixes from resolv.conf."""
-    domains: list[str] = []
-    try:
-        with open("/etc/resolv.conf", encoding="utf-8") as f:
-            for line in f:
-                parts = line.split()
-                if not parts or parts[0] not in {"search", "domain"}:
-                    continue
-                for value in parts[1:]:
-                    value = value.strip().strip(".")
-                    if value and value not in domains:
-                        domains.append(value)
-    except OSError:
-        pass
-    return domains
-
-
-def _hostname_candidates(name: str) -> list[str]:
-    """Build local hostname candidates for a lease name."""
-    if not name or name == "*":
-        return []
-    hostname = name.rstrip(".")
-    if "." in hostname:
-        return [hostname]
-
-    candidates: list[str] = []
-    for suffix in _local_search_domains():
-        candidate = f"{hostname}.{suffix}"
-        if candidate not in candidates:
-            candidates.append(candidate)
-
-    local_candidate = f"{hostname}.local"
-    if local_candidate not in candidates:
-        candidates.append(local_candidate)
-
-    return candidates
-
-
-def _host_resolves_to_ip(hostname: str, ip: str) -> bool:
-    """Return True when hostname resolves to the lease IP."""
-    try:
-        resolved = {
-            result[4][0]
-            for result in socket.getaddrinfo(
-                hostname,
-                None,
-                socket.AF_UNSPEC,
-                socket.SOCK_STREAM,
-            )
-        }
-        return ip in resolved
-    except OSError:
-        return False
-
-
-def check_web_hostname(ip: str, name: str) -> str | None:
-    """Return a reachable local hostname URL matching the lease IP."""
-    for hostname in _hostname_candidates(name):
-        if not _host_resolves_to_ip(hostname, ip):
-            continue
-
-        url = _check_http(hostname, use_https=False)
-        if url is not None:
-            return url
-
-        url = _check_http(hostname, use_https=True)
-        if url is not None:
-            return url
-
-    return None
 
 
 def _check_http(host: str, use_https: bool) -> str | None:
@@ -379,8 +322,86 @@ def _check_http(host: str, use_https: bool) -> str | None:
         pass
     finally:
         if connection is not None:
-            with suppress(OSError):
+            try:
                 connection.close()
+            except OSError:
+                pass
+
+    return None
+
+
+def _local_search_domains() -> list[str]:
+    """Return local DNS search/domain suffixes from resolv.conf."""
+    domains: list[str] = []
+    try:
+        with open("/etc/resolv.conf", encoding="utf-8") as f:
+            for line in f:
+                parts = line.split()
+                if not parts or parts[0] not in {"search", "domain"}:
+                    continue
+                for value in parts[1:]:
+                    value = value.strip().strip(".")
+                    if value and value not in domains:
+                        domains.append(value)
+    except OSError:
+        pass
+    return domains
+
+
+def _hostname_candidates(name: str) -> list[str]:
+    """Build local hostname candidates for a lease name."""
+    if not name or name == "*":
+        return []
+    hostname = name.rstrip(".")
+    if "." in hostname:
+        return [hostname]
+
+    candidates = []
+    for suffix in _local_search_domains():
+        candidate = f"{hostname}.{suffix}"
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    local_candidate = f"{hostname}.local"
+    if local_candidate not in candidates:
+        candidates.append(local_candidate)
+
+    return candidates
+
+
+def _host_resolves_to_ip(hostname: str, ip: str) -> bool:
+    """Return True when hostname resolves to the lease IP."""
+    try:
+        resolved = {
+            result[4][0]
+            for result in socket.getaddrinfo(
+                hostname,
+                None,
+                socket.AF_UNSPEC,
+                socket.SOCK_STREAM,
+            )
+        }
+        return ip in resolved
+    except OSError:
+        return False
+
+
+def check_web_hostname(
+    ip: str,
+    name: str,
+    web_url: str | None,
+) -> str | None:
+    """Return a hostname URL when it resolves to the lease IP."""
+    if not web_url:
+        return None
+
+    parsed = urlsplit(web_url)
+    scheme = parsed.scheme or "http"
+    port = f":{parsed.port}" if parsed.port else ""
+
+    for hostname in _hostname_candidates(name):
+        if _host_resolves_to_ip(hostname, ip):
+            return f"{scheme}://{hostname}{port}"
 
     return None
 
@@ -407,7 +428,7 @@ def check_web_ui(ip: str) -> str | None:
 
 def add_web_urls(leases: list[LeaseEntry]) -> None:
     """
-    Check all lease IPs in parallel and attach a web URL where available.
+    Check lease IPs in parallel and attach IP and hostname web URLs.
     """
     if not leases:
         return
@@ -428,13 +449,27 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
     for lease, url in zip(leases, urls, strict=True):
         lease.webUrl = url
 
-    hostname_urls = [
-        check_web_hostname(lease.ipAddress, lease.name)
-        for lease in leases
-    ]
+    web_leases = [lease for lease in leases if lease.webUrl]
+    if not web_leases:
+        return
 
-    for lease, url in zip(leases, hostname_urls, strict=True):
+    with ThreadPoolExecutor(
+        max_workers=min(max(1, WEB_UI_MAX_WORKERS), len(web_leases))
+    ) as executor:
+        hostname_urls = list(
+            executor.map(
+                lambda lease: check_web_hostname(
+                    lease.ipAddress,
+                    lease.name,
+                    lease.webUrl,
+                ),
+                web_leases,
+            )
+        )
+
+    for lease, url in zip(web_leases, hostname_urls, strict=True):
         lease.webHostUrl = url
+
 
 
 def read_leases() -> list[LeaseEntry]:
@@ -495,7 +530,9 @@ def get_leases():
         )
         return jsonify(error="leases file unavailable"), 503
 
-    return jsonify(leases=[asdict(lease) for lease in leases])
+    return jsonify(
+        leases=[asdict(lease) for lease in leases]
+    )
 
 
 if __name__ == "__main__":
