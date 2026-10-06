@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from http.client import HTTPConnection, HTTPSConnection
 from ipaddress import ip_address
+from urllib.parse import urlsplit
 
 from flask import Flask, jsonify, render_template
 
@@ -305,25 +306,19 @@ def _host_resolves_to_ip(hostname: str, ip: str) -> bool:
         return False
 
 
-def check_web_hostname(
-    ip: str,
-    name: str,
-    web_url: str | None,
-) -> str | None:
-    """Return a local hostname URL when it resolves to the lease IP."""
-    if not web_url:
-        return None
-
+def check_web_hostname(ip: str, name: str) -> str | None:
+    """Return a reachable local hostname URL matching the lease IP."""
     for hostname in _hostname_candidates(name):
         if not _host_resolves_to_ip(hostname, ip):
             continue
 
-        parsed = urlsplit(web_url)
-        scheme = parsed.scheme or "http"
-        port = f":{parsed.port}" if parsed.port else ""
-        if ":" in hostname:
-            return f"{scheme}://[{hostname}]{port}"
-        return f"{scheme}://{hostname}{port}"
+        url = _check_http(hostname, use_https=False)
+        if url is not None:
+            return url
+
+        url = _check_http(hostname, use_https=True)
+        if url is not None:
+            return url
 
     return None
 
@@ -412,8 +407,7 @@ def check_web_ui(ip: str) -> str | None:
 
 def add_web_urls(leases: list[LeaseEntry]) -> None:
     """
-    Check all lease IPs in parallel and attach IP and hostname web URLs.
-    Hostname links only require DNS resolution; no extra HTTP/HTTPS probes.
+    Check all lease IPs in parallel and attach a web URL where available.
     """
     if not leases:
         return
@@ -434,17 +428,10 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
     for lease, url in zip(leases, urls, strict=True):
         lease.webUrl = url
 
-    with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        hostname_urls = list(
-            executor.map(
-                lambda lease: check_web_hostname(
-                    lease.ipAddress,
-                    lease.name,
-                    lease.webUrl,
-                ),
-                leases,
-            )
-        )
+    hostname_urls = [
+        check_web_hostname(lease.ipAddress, lease.name)
+        for lease in leases
+    ]
 
     for lease, url in zip(leases, hostname_urls, strict=True):
         lease.webHostUrl = url
