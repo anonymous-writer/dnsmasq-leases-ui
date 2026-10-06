@@ -10,7 +10,6 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from http.client import HTTPConnection, HTTPSConnection
 from ipaddress import ip_address
-from urllib.parse import urlsplit
 
 from flask import Flask, jsonify, render_template
 
@@ -322,10 +321,93 @@ def check_web_hostname(
         parsed = urlsplit(web_url)
         scheme = parsed.scheme or "http"
         port = f":{parsed.port}" if parsed.port else ""
+        if ":" in hostname:
+            return f"{scheme}://[{hostname}]{port}"
         return f"{scheme}://{hostname}{port}"
 
     return None
 
+
+def _check_http(host: str, use_https: bool) -> str | None:
+    """
+    Check whether a host responds as an HTTP/HTTPS server.
+
+    Returns the corresponding URL if a valid HTTP response is received.
+    Returns None otherwise.
+
+    HTTPS certificate verification is intentionally disabled here because
+    local devices commonly use self-signed certificates.
+    """
+    connection = None
+
+    try:
+        if use_https:
+            context = ssl._create_unverified_context()
+            connection = HTTPSConnection(
+                host,
+                443,
+                timeout=WEB_UI_TIMEOUT,
+                context=context,
+            )
+        else:
+            connection = HTTPConnection(
+                host,
+                80,
+                timeout=WEB_UI_TIMEOUT,
+            )
+
+        connection.request(
+            "GET",
+            "/",
+            headers={
+                "Connection": "close",
+                "User-Agent": "dnsmasq-leases-ui",
+            },
+        )
+
+        response = connection.getresponse()
+
+        # Reading one byte is enough to make sure we actually received an
+        # HTTP response without downloading an entire web page.
+        response.read(1)
+
+        if 100 <= response.status <= 599:
+            scheme = "https" if use_https else "http"
+
+            # IPv6 URLs require square brackets.
+            if ":" in host:
+                return f"{scheme}://[{host}]"
+
+            return f"{scheme}://{host}"
+
+    except (OSError, ValueError):
+        pass
+    finally:
+        if connection is not None:
+            with suppress(OSError):
+                connection.close()
+
+    return None
+
+
+def check_web_ui(ip: str) -> str | None:
+    """
+    Check whether an HTTP or HTTPS web UI is available.
+
+    HTTP is checked first. If no HTTP server is found, HTTPS is checked.
+    """
+    try:
+        parsed_ip = ip_address(ip)
+        host = str(parsed_ip)
+    except ValueError:
+        return None
+
+    url = _check_http(host, use_https=False)
+
+    if url is not None:
+        return url
+
+    return _check_http(host, use_https=True)
 
 
 def add_web_urls(leases: list[LeaseEntry]) -> None:
@@ -366,7 +448,6 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
 
     for lease, url in zip(leases, hostname_urls, strict=True):
         lease.webHostUrl = url
-
 
 
 def read_leases() -> list[LeaseEntry]:
