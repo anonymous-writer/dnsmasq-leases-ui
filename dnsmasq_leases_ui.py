@@ -95,9 +95,7 @@ class LeaseEntry:
         if leasetime == "0":
             lease_end = "Never"
         else:
-            lease_end = datetime.fromtimestamp(int(leasetime)).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
+            lease_end = datetime.fromtimestamp(int(leasetime)).strftime("%Y-%m-%d %H:%M:%S")
 
         return cls(
             staticIP=reserved,
@@ -234,9 +232,7 @@ class DhcpReservations:
         if identifier and self._normalise_identifier(identifier) in self.identifiers:
             return True
 
-        return bool(
-            client_id and self._normalise_identifier(client_id) in self.identifiers
-        )
+        return bool(client_id and self._normalise_identifier(client_id) in self.identifiers)
 
 
 def read_reservations() -> DhcpReservations:
@@ -440,8 +436,7 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
         lease.webUrl = url
 
     hostname_urls = [
-        check_web_hostname(lease.ipAddress, lease.name, lease.webUrl)
-        for lease in leases
+        check_web_hostname(lease.ipAddress, lease.name, lease.webUrl) for lease in leases
     ]
 
     for lease, url in zip(leases, hostname_urls, strict=True):
