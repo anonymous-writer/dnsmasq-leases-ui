@@ -4,6 +4,7 @@ import os
 import re
 import socket
 import ssl
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from dataclasses import asdict, dataclass
@@ -289,20 +290,30 @@ def _hostname_candidates(name: str) -> list[str]:
 
 
 def _host_resolves_to_ip(hostname: str, ip: str) -> bool:
-    """Return True when hostname resolves to the lease IP."""
-    try:
-        resolved = {
-            result[4][0]
-            for result in socket.getaddrinfo(
-                hostname,
-                None,
-                socket.AF_UNSPEC,
-                socket.SOCK_STREAM,
+    """Return True when hostname resolves to the lease IP without blocking."""
+    result: list[set[str]] = []
+
+    def resolve() -> None:
+        try:
+            result.append(
+                {
+                    item[4][0]
+                    for item in socket.getaddrinfo(
+                        hostname,
+                        None,
+                        socket.AF_UNSPEC,
+                        socket.SOCK_STREAM,
+                    )
+                }
             )
-        }
-        return ip in resolved
-    except OSError:
-        return False
+        except OSError:
+            pass
+
+    thread = threading.Thread(target=resolve, daemon=True)
+    thread.start()
+    thread.join(WEB_UI_TIMEOUT)
+
+    return bool(result and ip in result[0])
 
 
 def check_web_hostname(ip: str, name: str, web_url: str | None) -> str | None:
@@ -433,7 +444,7 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
         lease.webHostUrl = url
 
 
-    def read_leases() -> list[LeaseEntry]:
+def read_leases() -> list[LeaseEntry]:
     leases: list[LeaseEntry] = []
     reservations = read_reservations()
 
