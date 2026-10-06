@@ -442,8 +442,8 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
 
 
     def read_leases() -> list[LeaseEntry]:
-    leases: list[LeaseEntry] = []
-    reservations = read_reservations()
+        leases: list[LeaseEntry] = []
+        reservations = read_reservations()
 
     with open(DNSMASQ_LEASES_FILE, encoding="utf-8") as f:
         for line in f:
