@@ -432,6 +432,7 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
     for lease, url in zip(leases, hostname_urls, strict=True):
         lease.webHostUrl = url
 
+
 def read_leases() -> list[LeaseEntry]:
     leases: list[LeaseEntry] = []
     reservations = read_reservations()
