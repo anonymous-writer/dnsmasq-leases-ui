@@ -435,10 +435,7 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
     for lease, url in zip(leases, urls, strict=True):
         lease.webUrl = url
 
-    hostname_urls = [
-        check_web_hostname(lease.ipAddress, lease.name, lease.webUrl)
-        for lease in leases
-    ]
+    hostname_urls = [check_web_hostname(lease.ipAddress, lease.name, lease.webUrl) for lease in leases]
 
     for lease, url in zip(leases, hostname_urls, strict=True):
         lease.webHostUrl = url
