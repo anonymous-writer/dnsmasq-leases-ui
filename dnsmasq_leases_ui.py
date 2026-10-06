@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from http.client import HTTPConnection, HTTPSConnection
 from ipaddress import ip_address
+from urllib.parse import urlsplit
 
 from flask import Flask, jsonify, render_template
 
@@ -305,108 +306,32 @@ def _host_resolves_to_ip(hostname: str, ip: str) -> bool:
         return False
 
 
-def check_web_hostname(ip: str, name: str) -> str | None:
-    """Return a reachable local hostname URL matching the lease IP."""
+def check_web_hostname(
+    ip: str,
+    name: str,
+    web_url: str | None,
+) -> str | None:
+    """Return a local hostname URL when it resolves to the lease IP."""
+    if not web_url:
+        return None
+
     for hostname in _hostname_candidates(name):
         if not _host_resolves_to_ip(hostname, ip):
             continue
 
-        url = _check_http(hostname, use_https=False)
-        if url is not None:
-            return url
-
-        url = _check_http(hostname, use_https=True)
-        if url is not None:
-            return url
+        parsed = urlsplit(web_url)
+        scheme = parsed.scheme or "http"
+        port = f":{parsed.port}" if parsed.port else ""
+        return f"{scheme}://{hostname}{port}"
 
     return None
 
-
-def _check_http(host: str, use_https: bool) -> str | None:
-    """
-    Check whether a host responds as an HTTP/HTTPS server.
-
-    Returns the corresponding URL if a valid HTTP response is received.
-    Returns None otherwise.
-
-    HTTPS certificate verification is intentionally disabled here because
-    local devices commonly use self-signed certificates.
-    """
-    connection = None
-
-    try:
-        if use_https:
-            context = ssl._create_unverified_context()
-            connection = HTTPSConnection(
-                host,
-                443,
-                timeout=WEB_UI_TIMEOUT,
-                context=context,
-            )
-        else:
-            connection = HTTPConnection(
-                host,
-                80,
-                timeout=WEB_UI_TIMEOUT,
-            )
-
-        connection.request(
-            "GET",
-            "/",
-            headers={
-                "Connection": "close",
-                "User-Agent": "dnsmasq-leases-ui",
-            },
-        )
-
-        response = connection.getresponse()
-
-        # Reading one byte is enough to make sure we actually received an
-        # HTTP response without downloading an entire web page.
-        response.read(1)
-
-        if 100 <= response.status <= 599:
-            scheme = "https" if use_https else "http"
-
-            # IPv6 URLs require square brackets.
-            if ":" in host:
-                return f"{scheme}://[{host}]"
-
-            return f"{scheme}://{host}"
-
-    except (OSError, ValueError):
-        pass
-    finally:
-        if connection is not None:
-            with suppress(OSError):
-                connection.close()
-
-    return None
-
-
-def check_web_ui(ip: str) -> str | None:
-    """
-    Check whether an HTTP or HTTPS web UI is available.
-
-    HTTP is checked first. If no HTTP server is found, HTTPS is checked.
-    """
-    try:
-        parsed_ip = ip_address(ip)
-        host = str(parsed_ip)
-    except ValueError:
-        return None
-
-    url = _check_http(host, use_https=False)
-
-    if url is not None:
-        return url
-
-    return _check_http(host, use_https=True)
 
 
 def add_web_urls(leases: list[LeaseEntry]) -> None:
     """
-    Check all lease IPs in parallel and attach a web URL where available.
+    Check all lease IPs in parallel and attach IP and hostname web URLs.
+    Hostname links only require DNS resolution; no extra HTTP/HTTPS probes.
     """
     if not leases:
         return
@@ -427,34 +352,24 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
     for lease, url in zip(leases, urls, strict=True):
         lease.webUrl = url
 
-
-def add_hostname_urls(leases: list[LeaseEntry]) -> None:
-    """Check local hostname candidates in parallel and attach hostname URLs."""
-    if not leases:
-        return
-
-    worker_count = min(
-        max(1, WEB_UI_MAX_WORKERS),
-        len(leases),
-    )
-
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        urls = list(
+        hostname_urls = list(
             executor.map(
                 lambda lease: check_web_hostname(
                     lease.ipAddress,
                     lease.name,
+                    lease.webUrl,
                 ),
                 leases,
             )
         )
 
-    for lease, url in zip(leases, urls, strict=True):
+    for lease, url in zip(leases, hostname_urls, strict=True):
         lease.webHostUrl = url
 
 
 
-def read_leases(*, check_web: bool = True) -> list[LeaseEntry]:
+def read_leases() -> list[LeaseEntry]:
     leases: list[LeaseEntry] = []
     reservations = read_reservations()
 
@@ -483,8 +398,7 @@ def read_leases(*, check_web: bool = True) -> list[LeaseEntry]:
                 )
             )
 
-    if check_web:
-        add_web_urls(leases)
+    add_web_urls(leases)
 
     return leases
 
@@ -496,31 +410,6 @@ def index():
         version=__version__,
         release_date=__release_date__,
         repo_url=REPO_URL,
-    )
-
-
-@app.route("/hostname-links")
-def get_hostname_links():
-    try:
-        leases = read_leases(check_web=False)
-        add_hostname_urls(leases)
-    except OSError as exc:
-        app.logger.warning(
-            "cannot read %s: %s",
-            DNSMASQ_LEASES_FILE,
-            exc,
-        )
-        return jsonify(error="leases file unavailable"), 503
-
-    return jsonify(
-        leases=[
-            {
-                "ipAddress": lease.ipAddress,
-                "webHostUrl": lease.webHostUrl,
-            }
-            for lease in leases
-            if lease.webHostUrl
-        ]
     )
 
 
