@@ -305,19 +305,18 @@ def _host_resolves_to_ip(hostname: str, ip: str) -> bool:
         return False
 
 
-def check_web_hostname(ip: str, name: str) -> str | None:
-    """Return a reachable local hostname URL matching the lease IP."""
+def check_web_hostname(
+    ip: str, name: str, web_url: str | None
+) -> str | None:
+    """Return a local hostname URL when it resolves to a web-enabled lease IP."""
+    if web_url is None:
+        return None
+
+    scheme = "https" if web_url.startswith("https://") else "http"
+
     for hostname in _hostname_candidates(name):
-        if not _host_resolves_to_ip(hostname, ip):
-            continue
-
-        url = _check_http(hostname, use_https=False)
-        if url is not None:
-            return url
-
-        url = _check_http(hostname, use_https=True)
-        if url is not None:
-            return url
+        if _host_resolves_to_ip(hostname, ip):
+            return f"{scheme}://{hostname}"
 
     return None
 
@@ -427,11 +426,13 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
     for lease, url in zip(leases, urls, strict=True):
         lease.webUrl = url
 
-    hostname_urls = [check_web_hostname(lease.ipAddress, lease.name) for lease in leases]
+    hostname_urls = [
+        check_web_hostname(lease.ipAddress, lease.name, lease.webUrl)
+        for lease in leases
+    ]
 
     for lease, url in zip(leases, hostname_urls, strict=True):
         lease.webHostUrl = url
-
 
 def read_leases() -> list[LeaseEntry]:
     leases: list[LeaseEntry] = []
