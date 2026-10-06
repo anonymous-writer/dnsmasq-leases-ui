@@ -444,7 +444,7 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
         lease.webHostUrl = url
 
 
-    def read_leases() -> list[LeaseEntry]:
+def read_leases() -> list[LeaseEntry]:
     leases: list[LeaseEntry] = []
     reservations = read_reservations()
 
