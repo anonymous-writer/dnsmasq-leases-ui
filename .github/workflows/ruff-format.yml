@@ -1,0 +1,20 @@
+name: Ruff Format
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  ruff-format:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ruff format
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: format dnsmasq_leases_ui.py
