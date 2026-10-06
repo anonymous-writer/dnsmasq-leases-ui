@@ -436,7 +436,7 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
         lease.webUrl = url
 
     hostname_urls = [
-        check_web_hostname(lease.ipAddress, lease.name, lease.webUrl) 
+        check_web_hostname(lease.ipAddress, lease.name, lease.webUrl)
         for lease in leases
     ]
 
@@ -444,9 +444,9 @@ def add_web_urls(leases: list[LeaseEntry]) -> None:
         lease.webHostUrl = url
 
 
-    def read_leases() -> list[LeaseEntry]:
-        leases: list[LeaseEntry] = []
-        reservations = read_reservations()
+def read_leases() -> list[LeaseEntry]:
+    leases: list[LeaseEntry] = []
+    reservations = read_reservations()
 
     with open(DNSMASQ_LEASES_FILE, encoding="utf-8") as f:
         for line in f:
