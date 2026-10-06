@@ -305,9 +305,7 @@ def _host_resolves_to_ip(hostname: str, ip: str) -> bool:
         return False
 
 
-def check_web_hostname(
-    ip: str, name: str, web_url: str | None
-) -> str | None:
+def check_web_hostname(ip: str, name: str, web_url: str | None) -> str | None:
     """Return a local hostname URL when it resolves to a web-enabled lease IP."""
     if web_url is None:
         return None
