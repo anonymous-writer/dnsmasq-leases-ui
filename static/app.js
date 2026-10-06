@@ -3,10 +3,8 @@ import { DEFAULT_SORT, cellsFor, countLabel, matchesFilter, sortLeases } from '.
 const SCRIPT_ROOT = document.body.dataset.scriptRoot ?? '';
 const THEME_KEY = 'dnsmasq-leases-theme';
 const STORAGE_KEY = 'dnsmasq-leases-sort';
-const LINK_MODE_KEY = 'dnsmasq-leases-link-mode';
 
 const themeBtn = document.querySelector('#theme-toggle');
-const hostnameToggle = document.querySelector('#hostname-toggle');
 
 themeBtn.addEventListener('click', () => {
 	const current = document.documentElement.getAttribute('data-theme');
@@ -29,8 +27,6 @@ themeBtn.addEventListener('click', () => {
 let leases = [];
 let filterQuery = '';
 let currentSort = loadSort();
-let hostnameLinksLoaded = false;
-let hostnameLinksLoading = false;
 
 
 function loadSort() {
@@ -77,78 +73,6 @@ function createIpLink(label, url) {
 }
 
 
-function loadHostnameMode() {
-	try {
-		return localStorage.getItem(LINK_MODE_KEY) === 'hostname';
-	} catch {
-		return false;
-	}
-}
-
-function saveHostnameMode(enabled) {
-	try {
-		localStorage.setItem(
-			LINK_MODE_KEY,
-			enabled ? 'hostname' : 'ip',
-		);
-	} catch {}
-}
-
-async function loadHostnameLinks() {
-	if (hostnameLinksLoaded || hostnameLinksLoading) {
-		return;
-	}
-
-	hostnameLinksLoading = true;
-
-	try {
-		const r = await fetch(`${SCRIPT_ROOT}/hostname-links`);
-
-		if (!r.ok) {
-			throw new Error(`HTTP ${r.status}`);
-		}
-
-		const data = await r.json();
-		const linksByIp = new Map(
-			(data.leases ?? []).map(row => [
-				row.ipAddress,
-				row.webHostUrl,
-			])
-		);
-
-		for (const lease of leases) {
-			lease.webHostUrl = linksByIp.get(lease.ipAddress) ?? null;
-		}
-
-		hostnameLinksLoaded = true;
-		render();
-	} catch (err) {
-		console.error('Failed to load hostname links:', err);
-	} finally {
-		hostnameLinksLoading = false;
-	}
-}
-
-
-function linkForLease(row) {
-	if (hostnameToggle?.checked && row.webHostUrl) {
-		return {
-			label: new URL(row.webHostUrl).hostname,
-			url: row.webHostUrl,
-		};
-	}
-
-	if (row.webUrl) {
-		return {
-			label: row.ipAddress,
-			url: row.webUrl,
-		};
-	}
-
-	return null;
-}
-
-
 function render() {
 	const filtered = leases.filter(
 		row => matchesFilter(row, filterQuery)
@@ -177,22 +101,23 @@ function render() {
 				 * Only create a link when Python found a
 				 * reachable HTTP/HTTPS service.
 				 */
-				if (index === 0 && row.ipAddress) {
-					const link = linkForLease(row);
-
-					if (link) {
-						td.appendChild(
-							createIpLink(
-								link.label,
-								link.url,
-							)
-						);
-					} else {
-						td.textContent = val;
-					}
-				} else {
-					td.textContent = val;
-				}
+                if (index === 0 && row.ipAddress && row.webUrl) {
+                    td.appendChild(
+                        createIpLink(
+                            row.ipAddress,
+                            row.webUrl,
+                        )
+                    );
+                } else if (index === 2 && row.name && row.webHostUrl) {
+                    td.appendChild(
+                        createIpLink(
+                            row.name,
+                            row.webHostUrl,
+                        )
+                    );
+                } else {
+                    td.textContent = val;
+                }
 
 				tr.appendChild(td);
 			});
@@ -304,20 +229,6 @@ thead.addEventListener('keydown', e => {
 
 
 updateIndicators();
-
-if (hostnameToggle) {
-	hostnameToggle.checked = loadHostnameMode();
-	hostnameToggle.addEventListener('change', () => {
-		saveHostnameMode(hostnameToggle.checked);
-
-		if (hostnameToggle.checked) {
-			void loadHostnameLinks();
-		} else {
-			render();
-		}
-	});
-}
-
 
 try {
 	const r = await fetch(`${SCRIPT_ROOT}/leases`);
