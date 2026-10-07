@@ -32,7 +32,6 @@ docker run -d --name dnsmasq-leases-ui \
   -v /var/lib/misc/dnsmasq.leases:/var/lib/misc/dnsmasq.leases:ro \
   -v /etc/dnsmasq.dhcphosts:/etc/dnsmasq.dhcphosts:ro \
   ghcr.io/anonymous-writer/dnsmasq-leases-ui:latest
-  # or: anonymous-writer/dnsmasq-leases-ui:latest  (Docker Hub)
 ```
 
 Open `http://<host>:5000`.
