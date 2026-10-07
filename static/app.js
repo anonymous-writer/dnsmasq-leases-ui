@@ -239,34 +239,23 @@ thead.addEventListener('keydown', e => {
 updateIndicators();
 
 
-async function loadLeases() {
-	try {
-		const r = await fetch(`${SCRIPT_ROOT}/leases`, {
-			cache: 'no-store',
-		});
+try {
+	const r = await fetch(`${SCRIPT_ROOT}/leases`);
 
-		if (!r.ok) {
-			throw new Error(`HTTP ${r.status}`);
-		}
-
-		const data = await r.json();
-
-		leases = data.leases;
-
-		statusEl.classList.remove('error');
-
-		render();
-	} catch (err) {
-		statusEl.textContent =
-			`Failed to load leases: ${err.message}`;
-
-		statusEl.classList.add('error');
-
-		console.error(err);
+	if (!r.ok) {
+		throw new Error(`HTTP ${r.status}`);
 	}
+
+	const data = await r.json();
+
+	leases = data.leases;
+
+	render();
+} catch (err) {
+	statusEl.textContent =
+		`Failed to load leases: ${err.message}`;
+
+	statusEl.classList.add('error');
+
+	console.error(err);
 }
-
-
-await loadLeases();
-
-setInterval(loadLeases, 5000);
