@@ -1,9 +1,10 @@
+
 # dnsmasq-leases-ui
 
-[![release](https://img.shields.io/github/v/release/fschlag/dnsmasq-leases-ui)](https://github.com/fschlag/dnsmasq-leases-ui/releases)
-[![ghcr](https://img.shields.io/badge/ghcr.io-fschlag%2Fdnsmasq--leases--ui-blue?logo=github)](https://github.com/fschlag/dnsmasq-leases-ui/pkgs/container/dnsmasq-leases-ui)
-[![docker hub](https://img.shields.io/docker/pulls/fschlag/dnsmasq-leases-ui?logo=docker)](https://hub.docker.com/r/fschlag/dnsmasq-leases-ui)
-[![license](https://img.shields.io/github/license/fschlag/dnsmasq-leases-ui)](LICENSE)
+[![release](https://img.shields.io/github/v/release/anonymous-writer/dnsmasq-leases-ui)](https://github.com/anonymous-writer/dnsmasq-leases-ui/releases)
+[![ghcr](https://img.shields.io/badge/ghcr.io-anonymous-writer%2Fdnsmasq--leases--ui-blue?logo=github)](https://github.com/anonymous-writer/dnsmasq-leases-ui/pkgs/container/dnsmasq-leases-ui)
+[![docker hub](https://img.shields.io/docker/pulls/anonymous-writer/dnsmasq-leases-ui?logo=docker)](https://hub.docker.com/r/anonymous-writer/dnsmasq-leases-ui)
+[![license](https://img.shields.io/github/license/anonymous-writer/dnsmasq-leases-ui)](LICENSE)
 
 Tiny web UI for the [dnsmasq](https://thekelleys.org.uk/dnsmasq/doc.html) DHCP leases file. Sortable, searchable table with dark mode and a JSON endpoint.
 
@@ -30,8 +31,8 @@ docker run -d --name dnsmasq-leases-ui \
   -p 5000:5000 \
   -v /var/lib/misc/dnsmasq.leases:/var/lib/misc/dnsmasq.leases:ro \
   -v /etc/dnsmasq.dhcphosts:/etc/dnsmasq.dhcphosts:ro \
-  ghcr.io/fschlag/dnsmasq-leases-ui:latest
-  # or: fschlag/dnsmasq-leases-ui:latest  (Docker Hub)
+  ghcr.io/anonymous-writer/dnsmasq-leases-ui:latest
+  # or: anonymous-writer/dnsmasq-leases-ui:latest  (Docker Hub)
 ```
 
 Open `http://<host>:5000`.
@@ -50,7 +51,7 @@ docker run -d --name dnsmasq-leases-ui \
   -e PORT=5000 \
   -v /var/lib/misc/dnsmasq.leases:/var/lib/misc/dnsmasq.leases:ro \
   -v /etc/dnsmasq.dhcphosts:/etc/dnsmasq.dhcphosts:ro \
-  ghcr.io/fschlag/dnsmasq-leases-ui:latest
+  ghcr.io/anonymous-writer/dnsmasq-leases-ui:latest
 ```
 
 When using host networking, do not use `-p` because the application listens
@@ -61,7 +62,7 @@ directly on the host network.
 ```yaml
 services:
   dnsmasq-leases-ui:
-    image: ghcr.io/fschlag/dnsmasq-leases-ui:latest
+    image: ghcr.io/anonymous-writer/dnsmasq-leases-ui:latest
     ports: ["5000:5000"]
     volumes:
       - /var/lib/misc/dnsmasq.leases:/var/lib/misc/dnsmasq.leases:ro
@@ -74,7 +75,7 @@ For IPv6 web-interface detection, use host networking:
 ```yaml
 services:
   dnsmasq-leases-ui:
-    image: ghcr.io/fschlag/dnsmasq-leases-ui:latest
+    image: ghcr.io/anonymous-writer/dnsmasq-leases-ui:latest
     network_mode: host
     environment:
       - PORT=5000
