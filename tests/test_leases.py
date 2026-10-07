@@ -71,7 +71,7 @@ class TestLeasesEndpoint:
             "name",
             "webUrl",
             "webHostUrl",
-        }      
+        }   
 
 
 class TestUnreadableFiles:
