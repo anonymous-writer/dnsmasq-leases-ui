@@ -294,7 +294,7 @@ def _host_resolves_to_ip(hostname: str, ip: str) -> bool:
     result: list[set[str]] = []
 
     def resolve() -> None:
-        try:
+        with suppress(OSError):
             result.append(
                 {
                     item[4][0]
@@ -306,8 +306,6 @@ def _host_resolves_to_ip(hostname: str, ip: str) -> bool:
                     )
                 }
             )
-        except OSError:
-            pass
 
     thread = threading.Thread(target=resolve, daemon=True)
     thread.start()
