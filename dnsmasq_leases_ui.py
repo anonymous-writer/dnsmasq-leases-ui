@@ -18,7 +18,7 @@ __version__ = os.environ.get("APP_VERSION", "dev")
 __release_date__ = os.environ.get("APP_RELEASE_DATE", "")
 REPO_URL = os.environ.get(
     "REPO_URL",
-    "https://github.com/anonymous-writer/dnsmasq-leases-ui",
+    "https://github.com/fschlag/dnsmasq-leases-ui",
 )
 
 DNSMASQ_LEASES_FILE = os.environ.get(
