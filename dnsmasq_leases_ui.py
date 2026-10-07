@@ -2,20 +2,47 @@
 
 import os
 import re
+import socket
+import ssl
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from http.client import HTTPConnection, HTTPSConnection
 from ipaddress import ip_address
 
 from flask import Flask, jsonify, render_template
 
 __version__ = os.environ.get("APP_VERSION", "dev")
 __release_date__ = os.environ.get("APP_RELEASE_DATE", "")
-REPO_URL = "https://github.com/fschlag/dnsmasq-leases-ui"
+REPO_URL = os.environ.get(
+    "REPO_URL",
+    "https://github.com/fschlag/dnsmasq-leases-ui",
+)
 
-DNSMASQ_LEASES_FILE = os.environ.get("DNSMASQ_LEASES_FILE", "/var/lib/misc/dnsmasq.leases")
-DNSMASQ_HOSTS_FILE = os.environ.get("DNSMASQ_HOSTS_FILE", "/etc/dnsmasq.dhcphosts")
+DNSMASQ_LEASES_FILE = os.environ.get(
+    "DNSMASQ_LEASES_FILE",
+    "/var/lib/misc/dnsmasq.leases",
+)
+DNSMASQ_HOSTS_FILE = os.environ.get(
+    "DNSMASQ_HOSTS_FILE",
+    "/etc/dnsmasq.dhcphosts",
+)
+
+# Web UI detection.
+#
+# These values can be overridden through environment variables:
+#
+#   WEB_UI_TIMEOUT=0.5
+#   WEB_UI_MAX_WORKERS=16
+#
+WEB_UI_TIMEOUT = float(os.environ.get("WEB_UI_TIMEOUT", "0.5"))
+WEB_UI_MAX_WORKERS = int(os.environ.get("WEB_UI_MAX_WORKERS", "16"))
+
 
 app = Flask(__name__)
+
 
 MAC_RE = re.compile(r"^(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$")
 
@@ -36,6 +63,8 @@ class LeaseEntry:
     macAddress: str
     ipAddress: str
     name: str
+    webUrl: str | None = None
+    webHostUrl: str | None = None
 
     @classmethod
     def from_line(
@@ -136,8 +165,8 @@ class DhcpReservations:
             if MAC_RE.fullmatch(candidate):
                 continue
 
-            # Skip a trailing lease time: "02:aa:...:14,iPhone-Three,12h" names
-            # the host iPhone-Three, not 12h.
+            # Skip a trailing lease time: "02:aa:...:14,iPhone-Three,12h"
+            # names the host iPhone-Three, not 12h.
             if LEASETIME_RE.fullmatch(candidate) or lower in DHCP_HOST_KEYWORDS:
                 continue
 
@@ -162,20 +191,22 @@ class DhcpReservations:
 
         # Preserve non-MAC identifiers in the first field as well.
         first = fields[0].strip().strip("[]")
+
         if first and not MAC_RE.fullmatch(first):
             try:
                 ip_address(first)
             except ValueError:
                 lower = first.casefold()
+
                 if lower.startswith("id:"):
-                    # dnsmasq key a reservation by client-id or DUID as
-                    # "id:<hex>", and the leases file carry that same value in
-                    # its client-id field. "id:*" match any client, and the
-                    # leases file write "*" for a lease without a client-id, so
-                    # storing it would flag every such lease.
+                    # dnsmasq keys a reservation by client-id or DUID as
+                    # "id:<hex>", and the leases file carries that same value
+                    # in its client-id field.
                     client_id = first[3:].strip()
+
                     if client_id and client_id != "*":
                         self.identifiers.add(self._normalise_identifier(client_id))
+
                 elif not lower.startswith(("set:", "tag:", "net:", "bootfile=")):
                     self.identifiers.add(self._normalise_identifier(first))
 
@@ -193,11 +224,7 @@ class DhcpReservations:
         except ValueError:
             pass
 
-        # 2. Hostname match. This is what links a DHCPv6 lease to its
-        # reservation, because the lease line carries an IAID and a dynamic
-        # address rather than the MAC/address from dhcp-hosts:
-        #   dhcphosts: 02:aa:00:00:00:12,iPhone-Two
-        #   leases:    1790623777 18 fd00:77::113 iPhone-Two 00:01:...
+        # 2. Hostname match.
         if name and self._normalise_name(name) in self.names:
             return True
 
@@ -216,11 +243,204 @@ def read_reservations() -> DhcpReservations:
             for line in f:
                 reservations.add_line(line)
     except OSError:
-        # Optional file: preserve the original behaviour when it is not mounted,
-        # and do not fail the page when it is there but unreadable.
+        # Optional file: preserve the original behaviour when it is not
+        # mounted, and do not fail the page when it is there but unreadable.
         pass
 
     return reservations
+
+
+def _local_search_domains() -> list[str]:
+    """Return local DNS search/domain suffixes from resolv.conf."""
+    domains: list[str] = []
+    try:
+        with open("/etc/resolv.conf", encoding="utf-8") as f:
+            for line in f:
+                parts = line.split()
+                if not parts or parts[0] not in {"search", "domain"}:
+                    continue
+                for value in parts[1:]:
+                    value = value.strip().strip(".")
+                    if value and value not in domains:
+                        domains.append(value)
+    except OSError:
+        pass
+    return domains
+
+
+def _hostname_candidates(name: str) -> list[str]:
+    """Build local hostname candidates for a lease name."""
+    if not name or name == "*":
+        return []
+    hostname = name.rstrip(".")
+    if "." in hostname:
+        return [hostname]
+
+    candidates: list[str] = []
+    for suffix in _local_search_domains():
+        candidate = f"{hostname}.{suffix}"
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    local_candidate = f"{hostname}.local"
+    if local_candidate not in candidates:
+        candidates.append(local_candidate)
+
+    return candidates
+
+
+def _host_resolves_to_ip(hostname: str, ip: str) -> bool:
+    """Return True when hostname resolves to the lease IP without blocking."""
+    result: list[set[str]] = []
+
+    def resolve() -> None:
+        try:
+            result.append(
+                {
+                    item[4][0]
+                    for item in socket.getaddrinfo(
+                        hostname,
+                        None,
+                        socket.AF_UNSPEC,
+                        socket.SOCK_STREAM,
+                    )
+                }
+            )
+        except OSError:
+            pass
+
+    thread = threading.Thread(target=resolve, daemon=True)
+    thread.start()
+    thread.join(WEB_UI_TIMEOUT)
+
+    return bool(result and ip in result[0])
+
+
+def check_web_hostname(ip: str, name: str, web_url: str | None) -> str | None:
+    """Return a local hostname URL when it resolves to a web-enabled lease IP."""
+    if web_url is None:
+        return None
+
+    scheme = "https" if web_url.startswith("https://") else "http"
+
+    for hostname in _hostname_candidates(name):
+        if _host_resolves_to_ip(hostname, ip):
+            return f"{scheme}://{hostname}"
+
+    return None
+
+
+def _check_http(host: str, use_https: bool) -> str | None:
+    """
+    Check whether a host responds as an HTTP/HTTPS server.
+
+    Returns the corresponding URL if a valid HTTP response is received.
+    Returns None otherwise.
+
+    HTTPS certificate verification is intentionally disabled here because
+    local devices commonly use self-signed certificates.
+    """
+    connection = None
+
+    try:
+        if use_https:
+            context = ssl._create_unverified_context()
+            connection = HTTPSConnection(
+                host,
+                443,
+                timeout=WEB_UI_TIMEOUT,
+                context=context,
+            )
+        else:
+            connection = HTTPConnection(
+                host,
+                80,
+                timeout=WEB_UI_TIMEOUT,
+            )
+
+        connection.request(
+            "GET",
+            "/",
+            headers={
+                "Connection": "close",
+                "User-Agent": "dnsmasq-leases-ui",
+            },
+        )
+
+        response = connection.getresponse()
+
+        # Reading one byte is enough to make sure we actually received an
+        # HTTP response without downloading an entire web page.
+        response.read(1)
+
+        if 100 <= response.status <= 599:
+            scheme = "https" if use_https else "http"
+
+            # IPv6 URLs require square brackets.
+            if ":" in host:
+                return f"{scheme}://[{host}]"
+
+            return f"{scheme}://{host}"
+
+    except (OSError, ValueError):
+        pass
+    finally:
+        if connection is not None:
+            with suppress(OSError):
+                connection.close()
+
+    return None
+
+
+def check_web_ui(ip: str) -> str | None:
+    """
+    Check whether an HTTP or HTTPS web UI is available.
+
+    HTTP is checked first. If no HTTP server is found, HTTPS is checked.
+    """
+    try:
+        parsed_ip = ip_address(ip)
+        host = str(parsed_ip)
+    except ValueError:
+        return None
+
+    url = _check_http(host, use_https=False)
+
+    if url is not None:
+        return url
+
+    return _check_http(host, use_https=True)
+
+
+def add_web_urls(leases: list[LeaseEntry]) -> None:
+    """
+    Check all lease IPs in parallel and attach a web URL where available.
+    """
+    if not leases:
+        return
+
+    worker_count = min(
+        max(1, WEB_UI_MAX_WORKERS),
+        len(leases),
+    )
+
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        urls = list(
+            executor.map(
+                lambda lease: check_web_ui(lease.ipAddress),
+                leases,
+            )
+        )
+
+    for lease, url in zip(leases, urls, strict=True):
+        lease.webUrl = url
+
+    hostname_urls = [
+        check_web_hostname(lease.ipAddress, lease.name, lease.webUrl) for lease in leases
+    ]
+
+    for lease, url in zip(leases, hostname_urls, strict=True):
+        lease.webHostUrl = url
 
 
 def read_leases() -> list[LeaseEntry]:
@@ -236,8 +456,8 @@ def read_leases() -> list[LeaseEntry]:
             if len(parts) != 5:
                 continue
 
-            # A corrupt lease time must not take down the whole page. dnsmasq
-            # write a plain integer (0 for an infinite lease).
+            # A corrupt lease time must not take down the whole page.
+            # dnsmasq writes a plain integer (0 for an infinite lease).
             if not parts[0].isdigit():
                 continue
 
@@ -251,6 +471,8 @@ def read_leases() -> list[LeaseEntry]:
                     reservations,
                 )
             )
+
+    add_web_urls(leases)
 
     return leases
 
@@ -270,10 +492,13 @@ def get_leases():
     try:
         leases = read_leases()
     except OSError as exc:
-        # A missing or unreadable leases file is a deployment problem (mount
-        # typo, permissions), not a crash: the frontend show its error banner
-        # for any non-OK response.
-        app.logger.warning("cannot read %s: %s", DNSMASQ_LEASES_FILE, exc)
+        # A missing or unreadable leases file is a deployment problem
+        # (mount typo, permissions), not a crash.
+        app.logger.warning(
+            "cannot read %s: %s",
+            DNSMASQ_LEASES_FILE,
+            exc,
+        )
         return jsonify(error="leases file unavailable"), 503
 
     return jsonify(leases=[asdict(lease) for lease in leases])
