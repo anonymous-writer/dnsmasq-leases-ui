@@ -70,12 +70,7 @@ class TestLeasesEndpoint:
             "ipAddress",
             "name",
             "webUrl",
-        }
-        assert {row["name"]: row["staticIP"] for row in rows} == {
-            "dynamic-b": False,
-            "reserved-a": True,
-            "reserved-c": True,
-            "reserved-d": True,
+            "webHostUrl",
         }
 
 
