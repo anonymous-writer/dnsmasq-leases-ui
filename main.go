@@ -218,6 +218,11 @@ func hostnameCandidates(name string) []string {
 	return out
 }
 func resolvesToIP(host, ip string, timeout time.Duration) bool {
+	target := net.ParseIP(ip)
+	if target == nil {
+		return false
+	}
+
 	ch := make(chan bool, 1)
 	go func() {
 		addrs, err := net.LookupIP(host)
@@ -226,13 +231,14 @@ func resolvesToIP(host, ip string, timeout time.Duration) bool {
 			return
 		}
 		for _, a := range addrs {
-			if a.String() == ip {
+			if a.Equal(target) {
 				ch <- true
 				return
 			}
 		}
 		ch <- false
 	}()
+
 	select {
 	case ok := <-ch:
 		return ok
@@ -255,16 +261,35 @@ func checkWebHostname(ip, name, webURL string, timeout time.Duration) string {
 	}
 	return ""
 }
-func checkWebUI(ip string, timeout time.Duration) string {
-	if net.ParseIP(ip) == nil {
+func formatWebURL(scheme, ip string) string {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
 		return ""
 	}
+	if parsed.To4() == nil {
+		return scheme + "://[" + ip + "]"
+	}
+	return scheme + "://" + ip
+}
+
+func checkWebUI(ip string, timeout time.Duration) string {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return ""
+	}
+
+	// IPv6 literals must be enclosed in brackets when used in an HTTP URL.
+	requestHost := ip
+	if parsed.To4() == nil {
+		requestHost = "[" + ip + "]"
+	}
+
 	for _, scheme := range []string{"http", "https"} {
 		client := &http.Client{Timeout: timeout}
 		if scheme == "https" {
 			client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 		}
-		req, err := http.NewRequest(http.MethodGet, scheme+"://"+ip+"/", nil)
+		req, err := http.NewRequest(http.MethodGet, scheme+"://"+requestHost+"/", nil)
 		if err != nil {
 			continue
 		}
@@ -276,7 +301,7 @@ func checkWebUI(ip string, timeout time.Duration) string {
 		}
 		resp.Body.Close()
 		if resp.StatusCode >= 100 && resp.StatusCode <= 599 {
-			return scheme + "://" + ip
+			return formatWebURL(scheme, ip)
 		}
 	}
 	return ""
