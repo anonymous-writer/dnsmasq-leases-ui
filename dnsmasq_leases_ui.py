@@ -23,11 +23,11 @@ REPO_URL = os.environ.get(
 
 DNSMASQ_LEASES_FILE = os.environ.get(
     "DNSMASQ_LEASES_FILE",
-    "/var/lib/misc/dnsmasq.leases",
+    "/var/lib/dnsmasq/dnsmasq.leases",
 )
 DNSMASQ_HOSTS_FILE = os.environ.get(
     "DNSMASQ_HOSTS_FILE",
-    "/etc/dnsmasq.dhcphosts",
+    "/var/lib/dnsmasq/dnsmasq.dhcphosts",
 )
 
 # Web UI detection.
