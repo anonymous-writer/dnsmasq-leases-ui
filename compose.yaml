@@ -1,0 +1,10 @@
+services:
+  dnsmasq-leases-ui:
+    build: .
+    container_name: dnsmasq-leases-ui
+    restart: unless-stopped
+    environment:
+      PORT: "3008"
+    network_mode: host
+    volumes:
+      - /var/lib/dnsmasq:/var/lib/dnsmasq:ro
