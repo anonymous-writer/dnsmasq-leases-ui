@@ -29,17 +29,18 @@ Pull from either registry:
 ```bash
 docker run -d --name dnsmasq-leases-ui \
   -p 5000:5000 \
-  -v /var/lib/misc/dnsmasq.leases:/var/lib/misc/dnsmasq.leases:ro \
-  -v /etc/dnsmasq.dhcphosts:/etc/dnsmasq.dhcphosts:ro \
+  -v /var/lib/dnsmasq:/var/lib/dnsmasq:ro \
   ghcr.io/anonymous-writer/dnsmasq-leases-ui:latest
 ```
 
 Open `http://<host>:5000`.
 
-The `dnsmasq.dhcphosts` mount is optional. Without it only reservations with an
-infinite lease are recognised, because that is all the leases file reveals; mount
-it to also flag reservations that are served with a normal lease time. Override
-either path with `DNSMASQ_LEASES_FILE` / `DNSMASQ_HOSTS_FILE`.
+The `/var/lib/dnsmasq` mount contains both `dnsmasq.leases` and
+`dnsmasq.dhcphosts`. The hosts file is optional. Without it only reservations
+with an infinite lease are recognised, because that is all the leases file
+reveals; include it to also flag reservations that are served with a normal
+lease time. Override either path with `DNSMASQ_LEASES_FILE` /
+`DNSMASQ_HOSTS_FILE`.
 
 For IPv6 web-interface detection, the container must be able to reach the host's
 IPv6 LAN. With Docker or Podman, host networking can be used:
@@ -48,8 +49,7 @@ IPv6 LAN. With Docker or Podman, host networking can be used:
 docker run -d --name dnsmasq-leases-ui \
   --network host \
   -e PORT=5000 \
-  -v /var/lib/misc/dnsmasq.leases:/var/lib/misc/dnsmasq.leases:ro \
-  -v /etc/dnsmasq.dhcphosts:/etc/dnsmasq.dhcphosts:ro \
+  -v /var/lib/dnsmasq:/var/lib/dnsmasq:ro \
   ghcr.io/anonymous-writer/dnsmasq-leases-ui:latest
 ```
 
@@ -64,8 +64,7 @@ services:
     image: ghcr.io/anonymous-writer/dnsmasq-leases-ui:latest
     ports: ["5000:5000"]
     volumes:
-      - /var/lib/misc/dnsmasq.leases:/var/lib/misc/dnsmasq.leases:ro
-      - /etc/dnsmasq.dhcphosts:/etc/dnsmasq.dhcphosts:ro
+      - /var/lib/dnsmasq:/var/lib/dnsmasq:ro
     restart: unless-stopped
 ```
 
@@ -79,8 +78,7 @@ services:
     environment:
       - PORT=5000
     volumes:
-      - /var/lib/misc/dnsmasq.leases:/var/lib/misc/dnsmasq.leases:ro
-      - /etc/dnsmasq.dhcphosts:/etc/dnsmasq.dhcphosts:ro
+      - /var/lib/dnsmasq:/var/lib/dnsmasq:ro
     restart: unless-stopped
 ```
 
@@ -114,6 +112,21 @@ python3 -m venv .venv
 The `dnsmasq.dhcphosts` file is optional. If it is not available, the UI
 continues to work, but reservations configured only in that file cannot be
 detected. Infinite leases (`lease time 0`) are still shown as DHCP reservations.
+
+For the default setup, place both files in `/var/lib/dnsmasq`:
+
+```text
+/var/lib/dnsmasq/
+├── dnsmasq.leases
+└── dnsmasq.dhcphosts
+```
+
+Configure dnsmasq accordingly:
+
+```ini
+dhcp-leasefile=/var/lib/dnsmasq/dnsmasq.leases
+dhcp-hostsfile=/var/lib/dnsmasq/dnsmasq.dhcphosts
+```
 
 For automatic detection of device web interfaces, the application checks
 HTTP and HTTPS on the lease IP addresses. IPv6 web-interface detection requires
