@@ -1,9 +1,11 @@
 services:
   dnsmasq-leases-ui:
-    build: .
     container_name: dnsmasq-leases-ui
+    build: .
     restart: unless-stopped
     environment:
+      HOME: /tmp
+      XDG_RUNTIME_DIR: /tmp
       PORT: "3008"
     network_mode: host
     volumes:
