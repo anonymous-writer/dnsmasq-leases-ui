@@ -1,10 +1,10 @@
 # dnsmasq-leases-ui
 
-[![GHCR](https://img.shields.io/badge/GHCR-go--beta-blue?logo=github)](https://github.com/anonymous-writer/dnsmasq-leases-ui/pkgs/container/dnsmasq-leases-ui)
+[![GHCR](https://img.shields.io/badge/GHCR-docker%20image-blue?logo=github)](https://github.com/anonymous-writer/dnsmasq-leases-ui/pkgs/container/dnsmasq-leases-ui)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/github/license/anonymous-writer/dnsmasq-leases-ui)](LICENSE)
 
-A lightweight web interface for the `dnsmasq` DHCP leases file, written in Go. It provides a searchable, sortable view of DHCP leases and automatically detects reachable HTTP/HTTPS interfaces on client devices.
+A lightweight web interface for the [dnsmasq](https://thekelleys.org.uk/dnsmasq/doc.html) DHCP leases file, written in Go. It provides a searchable, sortable view of DHCP leases and automatically detects reachable HTTP/HTTPS interfaces on client devices.
 
 ![Screenshot](https://raw.githubusercontent.com/anonymous-writer/dnsmasq-leases-ui/main/docs/screenshot.png)
 
@@ -24,10 +24,12 @@ A lightweight web interface for the `dnsmasq` DHCP leases file, written in Go. I
 
 ## Quick start
 
-The Go version is currently available under the `go-beta` image tag:
+For testing the latest Go development build before it becomes stable, use the `go-beta` tag instead of `latest`.
+
+Pull the current stable image from GitHub Container Registry:
 
 ```bash
-docker pull ghcr.io/anonymous-writer/dnsmasq-leases-ui:go-beta
+docker pull ghcr.io/anonymous-writer/dnsmasq-leases-ui:latest
 ```
 
 The container reads these files by default:
@@ -48,10 +50,12 @@ docker run -d \
   --network host \
   -e PORT=3008 \
   -v /var/lib/dnsmasq:/var/lib/dnsmasq:ro \
-  ghcr.io/anonymous-writer/dnsmasq-leases-ui:go-beta
+  ghcr.io/anonymous-writer/dnsmasq-leases-ui:latest
 ```
 
 Open `http://<host>:3008`.
+
+To test the development build, replace `:latest` with `:go-beta`.
 
 Host networking is useful when the container needs to reach IPv6 devices on the LAN. With host networking, do not use `-p`/`--publish`; the application listens directly on the host network.
 
@@ -60,7 +64,7 @@ Host networking is useful when the container needs to reach IPv6 devices on the 
 ```yaml
 services:
   dnsmasq-leases-ui:
-    image: ghcr.io/anonymous-writer/dnsmasq-leases-ui:go-beta
+    image: ghcr.io/anonymous-writer/dnsmasq-leases-ui:latest
     container_name: dnsmasq-leases-ui
     restart: unless-stopped
     environment:
@@ -156,16 +160,24 @@ docker run --rm --network host \
 
 ## Docker image tags
 
-- `go-beta` — rolling Go test image; successful workflow runs can update this tag.
-- `latest` — stable image tag; the Go beta workflow should not update it.
+- `latest` — current stable release.
+- Version tags such as `1.2.0` — fixed release versions.
+- `go-beta` — rolling Go test image for trying changes before they become stable.
 
-Publish stable and pre-release tags through the project's release workflow when configured.
+Pre-release tags should not update `latest`.
 
 ## IPv6 notes
 
 IPv6 detection requires the container to reach the relevant LAN IPv6 addresses. Host networking is one option when bridge networking lacks the required IPv6 route.
 
 IPv6 literals are enclosed in brackets when used in HTTP URLs, as required by URL syntax.
+
+## Credits
+
+- Theme-toggle icons: [Feather Icons](https://feathericons.com/) (MIT)
+- Favicon: [Lucide](https://lucide.dev/) (ISC)
+
+See [NOTICE](NOTICE) for attribution details.
 
 ## Contributing
 
