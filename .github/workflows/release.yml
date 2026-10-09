@@ -1,14 +1,14 @@
 name: Build and publish Docker image
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
-  workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: read
   packages: write
+  attestations: write
+  id-token: write
 
 env:
   REGISTRY: ghcr.io
@@ -17,16 +17,21 @@ env:
 jobs:
   release:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Ensure this workflow runs on a version tag
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          if [ "${GITHUB_REF_TYPE}" != "tag" ] || [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::Run this workflow on a version tag such as v1.2.3 or v1.2.3-beta1."
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid release tag: $RELEASE_TAG"
             exit 1
           fi
 
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -37,35 +42,29 @@ jobs:
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
-          registry: ghcr.io
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Set release metadata
         id: vars
-        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_DATE: ${{ github.event.release.published_at }}
         run: |
-          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-          echo "release_date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "release_date=${RELEASE_DATE%%T*}" >> "$GITHUB_OUTPUT"
 
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: |
-            ghcr.io/${{ github.repository }}
-            docker.io/${{ github.repository_owner }}/dnsmasq-leases-ui
+          images: ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern={{version}},value=${{ github.ref_name }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ github.ref_name }}
-            type=semver,pattern={{major}},value=${{ github.ref_name }}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+            type=semver,pattern={{version}},value=${{ github.event.release.tag_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ github.event.release.tag_name }}
+            type=semver,pattern={{major}},value=${{ github.event.release.tag_name }}
+            type=raw,value=latest,enable=${{ github.event.release.prerelease == false }}
 
       - name: Build and push
         id: build
@@ -85,8 +84,8 @@ jobs:
             APP_RELEASE_DATE=${{ steps.vars.outputs.release_date }}
             REPO_URL=https://github.com/${{ github.repository }}
 
-      - name: Attest build provenance (GHCR)
-        if: ${{ !contains(github.ref_name, '-') }}
+      - name: Attest build provenance
+        if: ${{ github.event.release.prerelease == false }}
         uses: actions/attest-build-provenance@v4
         with:
           subject-name: ghcr.io/${{ github.repository }}
