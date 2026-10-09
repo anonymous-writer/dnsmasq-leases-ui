@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go tests and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build -trimpath -o dnsmasq-leases-ui .
+
+  docker:
+    name: Docker build and smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Build image
+        run: docker build -t dnsmasq-leases-ui:ci .
+
+      - name: Prepare sample dnsmasq files
+        run: |
+          mkdir -p "$RUNNER_TEMP/dnsmasq"
+          printf '1791532800 aa:bb:cc:dd:ee:ff 192.0.2.10 ci-test-device 01:aa:bb:cc:dd:ee:ff\n' > "$RUNNER_TEMP/dnsmasq/dnsmasq.leases"
+          : > "$RUNNER_TEMP/dnsmasq/dnsmasq.dhcphosts"
+
+      - name: Run container
+        run: |
+          docker run -d --name ci             -p 5000:5000             -e DNSMASQ_LEASES_FILE=/test/dnsmasq.leases             -e DNSMASQ_HOSTS_FILE=/test/dnsmasq.dhcphosts             -v "$RUNNER_TEMP/dnsmasq:/test:ro"             dnsmasq-leases-ui:ci
+
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:5000/leases >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          for path in / /leases /static/app.js /static/icon.svg; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:5000${path}")
+            echo "${path} -> ${code}"
+            [ "$code" = "200" ] || exit 1
+          done
+
+          curl -sf http://127.0.0.1:5000/leases | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          assert data["leases"], "No leases returned"
+          assert data["leases"][0]["ipAddress"] == "192.0.2.10"
+          print("Go API smoke test passed")
+          '
+
+      - name: Container logs
+        if: always()
+        run: docker logs ci
