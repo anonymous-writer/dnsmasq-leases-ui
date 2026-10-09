@@ -127,7 +127,7 @@ Each lease object includes `staticIP`, `leasetime`, `macAddress`, `ipAddress`, `
 | `WEB_UI_MAX_WORKERS` | `16` | Maximum concurrent IP web-interface checks |
 | `APP_VERSION` | `dev` | Version shown by the application |
 | `APP_RELEASE_DATE` | empty | Release date shown by the application |
-| `REPO_URL` | `https://github.com/fschlag/dnsmasq-leases-ui` | Repository URL shown in the UI |
+| `REPO_URL` | `https://github.com/anonymous-writer/dnsmasq-leases-ui` | Repository URL shown in the UI |
 
 The `dnsmasq.dhcphosts` file is optional. Without it, the UI still works, but reservations defined only in that file cannot be identified. Leases with a lease time of `0` are displayed as `Never` and treated as reservations.
 
