@@ -378,7 +378,7 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
-		data := PageData{getenv("APP_VERSION", "dev"), getenv("APP_RELEASE_DATE", ""), getenv("REPO_URL", "https://github.com/fschlag/dnsmasq-leases-ui")}
+		data := PageData{getenv("APP_VERSION", "dev"), getenv("APP_RELEASE_DATE", ""), getenv("REPO_URL", "https://github.com/anonymous-writer/dnsmasq-leases-ui")}
 		if err := tmpl.Execute(w, data); err != nil {
 			http.Error(w, "template error", 500)
 		}
