@@ -10,3 +10,4 @@ services:
     network_mode: host
     volumes:
       - /var/lib/dnsmasq:/var/lib/dnsmasq:ro
+      - ./data:/data:Z
