@@ -154,7 +154,7 @@ func parseLeaseLine(line string, r *Reservations) (LeaseEntry, bool) {
 	expiry, _ := strconv.ParseInt(p[0], 10, 64)
 	return LeaseEntry{StaticIP: p[0] == "0" || r.matches(p[1], p[2], p[3], p[4]), LeaseTime: end, LeaseExpiry: expiry, MACAddress: strings.ToUpper(p[1]), IPAddress: p[2], Name: p[3]}, true
 }
-func readLeases(leasePath, hostsPath string) ([]LeaseEntry, error) {
+func readLeaseEntries(leasePath, hostsPath string) ([]LeaseEntry, error) {
 	f, err := os.Open(leasePath)
 	if err != nil {
 		return nil, err
@@ -169,6 +169,14 @@ func readLeases(leasePath, hostsPath string) ([]LeaseEntry, error) {
 		}
 	}
 	if err := s.Err(); err != nil {
+		return nil, err
+	}
+	return leases, nil
+}
+
+func readLeases(leasePath, hostsPath string) ([]LeaseEntry, error) {
+	leases, err := readLeaseEntries(leasePath, hostsPath)
+	if err != nil {
 		return nil, err
 	}
 	addWebURLs(leases)
@@ -456,6 +464,38 @@ func (k *KnownMACs) mark(mac string) error {
 	return nil
 }
 
+// markMany remembers each unique valid MAC in one persistent write.
+// It returns the number of unique valid MAC addresses supplied.
+func (k *KnownMACs) markMany(macs []string) (int, error) {
+	unique := make(map[string]struct{}, len(macs))
+	for _, mac := range macs {
+		mac = strings.ToUpper(strings.TrimSpace(mac))
+		if macRE.MatchString(mac) {
+			unique[mac] = struct{}{}
+		}
+	}
+
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	added := make([]string, 0, len(unique))
+	for mac := range unique {
+		if !k.macs[mac] {
+			k.macs[mac] = true
+			added = append(added, mac)
+		}
+	}
+	if len(added) == 0 {
+		return len(unique), nil
+	}
+	if err := k.saveLocked(); err != nil {
+		for _, mac := range added {
+			delete(k.macs, mac)
+		}
+		return 0, err
+	}
+	return len(unique), nil
+}
+
 func (k *KnownMACs) unmark(mac string) error {
 	mac = strings.ToUpper(strings.TrimSpace(mac))
 	if !macRE.MatchString(mac) {
@@ -518,6 +558,7 @@ func main() {
 			return
 		}
 		var err error
+		markedCount := 0
 		switch body.Action {
 		case "", "mark":
 			err = known.mark(body.MAC)
@@ -525,6 +566,19 @@ func main() {
 			err = known.unmark(body.MAC)
 		case "reset":
 			err = known.reset()
+		case "mark-reservations":
+			var leases []LeaseEntry
+			leases, err = readLeaseEntries(leasePath, hostsPath)
+			if err == nil {
+				macs := make([]string, 0, len(leases))
+				for _, lease := range leases {
+					mac := strings.TrimSpace(lease.MACAddress)
+					if lease.StaticIP && macRE.MatchString(mac) {
+						macs = append(macs, mac)
+					}
+				}
+				markedCount, err = known.markMany(macs)
+			}
 		default:
 			http.Error(w, "invalid action", http.StatusBadRequest)
 			return
@@ -534,6 +588,10 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
+		if body.Action == "mark-reservations" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": markedCount})
+			return
+		}
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	})
 	mux.HandleFunc("/leases", func(w http.ResponseWriter, r *http.Request) {
