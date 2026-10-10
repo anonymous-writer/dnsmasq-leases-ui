@@ -422,14 +422,7 @@ func (k *KnownMACs) has(mac string) bool {
 	defer k.mu.Unlock()
 	return k.macs[strings.ToUpper(strings.TrimSpace(mac))]
 }
-func (k *KnownMACs) mark(mac string) error {
-	mac = strings.ToUpper(strings.TrimSpace(mac))
-	if !macRE.MatchString(mac) {
-		return http.ErrNotSupported
-	}
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	k.macs[mac] = true
+func (k *KnownMACs) saveLocked() error {
 	if err := os.MkdirAll(filepath.Dir(k.path), 0755); err != nil {
 		return err
 	}
@@ -443,6 +436,54 @@ func (k *KnownMACs) mark(mac string) error {
 		return err
 	}
 	return os.WriteFile(k.path, data, 0644)
+}
+
+func (k *KnownMACs) mark(mac string) error {
+	mac = strings.ToUpper(strings.TrimSpace(mac))
+	if !macRE.MatchString(mac) {
+		return http.ErrNotSupported
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	wasKnown := k.macs[mac]
+	k.macs[mac] = true
+	if err := k.saveLocked(); err != nil {
+		if !wasKnown {
+			delete(k.macs, mac)
+		}
+		return err
+	}
+	return nil
+}
+
+func (k *KnownMACs) unmark(mac string) error {
+	mac = strings.ToUpper(strings.TrimSpace(mac))
+	if !macRE.MatchString(mac) {
+		return http.ErrNotSupported
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	wasKnown := k.macs[mac]
+	delete(k.macs, mac)
+	if err := k.saveLocked(); err != nil {
+		if wasKnown {
+			k.macs[mac] = true
+		}
+		return err
+	}
+	return nil
+}
+
+func (k *KnownMACs) reset() error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	previous := k.macs
+	k.macs = map[string]bool{}
+	if err := k.saveLocked(); err != nil {
+		k.macs = previous
+		return err
+	}
+	return nil
 }
 func main() {
 	known := newKnownMACs(getenv("KNOWN_MACS_FILE", "/data/known-macs.json"))
@@ -469,14 +510,27 @@ func main() {
 			return
 		}
 		var body struct {
-			MAC string `json:"mac"`
+			MAC    string `json:"mac"`
+			Action string `json:"action"`
 		}
 		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body) != nil {
 			http.Error(w, "invalid request", http.StatusBadRequest)
 			return
 		}
-		if err := known.mark(body.MAC); err != nil {
-			http.Error(w, "cannot save known MAC (check KNOWN_MACS_FILE permissions)", http.StatusInternalServerError)
+		var err error
+		switch body.Action {
+		case "", "mark":
+			err = known.mark(body.MAC)
+		case "unmark":
+			err = known.unmark(body.MAC)
+		case "reset":
+			err = known.reset()
+		default:
+			http.Error(w, "invalid action", http.StatusBadRequest)
+			return
+		}
+		if err != nil {
+			http.Error(w, "cannot save known MACs (check KNOWN_MACS_FILE permissions)", http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
