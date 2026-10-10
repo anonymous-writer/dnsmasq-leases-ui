@@ -5,7 +5,6 @@ package main
 import (
 	"encoding/json"
 	"html/template"
-	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -29,6 +28,7 @@ func homeHandler(cfg Config, tmpl *template.Template) http.HandlerFunc {
 		}
 		data := PageData{cfg.AppVersion, cfg.ReleaseDate, cfg.RepoURL}
 		if err := tmpl.Execute(w, data); err != nil {
+			LogErrorf("cannot render home page: %v", err)
 			http.Error(w, "template error", http.StatusInternalServerError)
 		}
 	}
@@ -39,6 +39,7 @@ func homeHandler(cfg Config, tmpl *template.Template) http.HandlerFunc {
 func knownMACsHandler(cfg Config, known *KnownMACs) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
+			LogWarnf("rejected non-POST request to /known-macs method=%s", r.Method)
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
@@ -47,14 +48,19 @@ func knownMACsHandler(cfg Config, known *KnownMACs) http.HandlerFunc {
 			Action string `json:"action"`
 		}
 		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body) != nil {
+			LogWarnf("rejected invalid JSON request to /known-macs")
 			http.Error(w, "invalid request", http.StatusBadRequest)
 			return
 		}
 
+		action := body.Action
+		if action == "" {
+			action = "mark"
+		}
 		var err error
 		markedCount := 0
-		switch body.Action {
-		case "", "mark":
+		switch action {
+		case "mark":
 			err = known.mark(body.MAC)
 		case "unmark":
 			err = known.unmark(body.MAC)
@@ -74,16 +80,32 @@ func knownMACsHandler(cfg Config, known *KnownMACs) http.HandlerFunc {
 				markedCount, err = known.markMany(macs)
 			}
 		default:
+			LogWarnf("rejected unknown known-MAC action action=%q", action)
 			http.Error(w, "invalid action", http.StatusBadRequest)
 			return
 		}
 		if err != nil {
+			LogErrorf("known-MAC action failed action=%s: %v", action, err)
 			http.Error(w, "cannot save known MACs (check KNOWN_MACS_FILE permissions)", http.StatusInternalServerError)
 			return
 		}
+
+		switch action {
+		case "mark":
+			LogInfof("device marked as known")
+		case "unmark":
+			LogInfof("device marked as new again")
+		case "reset":
+			LogInfof("remembered-device list reset")
+		case "mark-reservations":
+			LogInfof("DHCP reservations processed for remembered-device list count=%d", markedCount)
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		if body.Action == "mark-reservations" {
-			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": markedCount})
+		if action == "mark-reservations" {
+			if err := json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": markedCount}); err != nil {
+				LogDebugf("client disconnected while writing reservation action response: %v", err)
+			}
 			return
 		}
 		_, _ = w.Write([]byte(`{"ok":true}`))
@@ -94,7 +116,7 @@ func leasesHandler(cfg Config, known *KnownMACs) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		leases, err := readLeases(cfg.LeasePath, cfg.HostsPath)
 		if err != nil {
-			log.Printf("cannot read %s: %v", cfg.LeasePath, err)
+			LogErrorf("cannot read DHCP leases file path=%s: %v", cfg.LeasePath, err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"error":"leases file unavailable"}`))
@@ -111,6 +133,9 @@ func leasesHandler(cfg Config, known *KnownMACs) http.HandlerFunc {
 			leases[i].IsNew = !known.has(mac)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"leases": leases})
+		LogDebugf("served lease list count=%d", len(leases))
+		if err := json.NewEncoder(w).Encode(map[string]any{"leases": leases}); err != nil {
+			LogDebugf("client disconnected while writing leases response: %v", err)
+		}
 	}
 }

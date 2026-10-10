@@ -23,11 +23,18 @@ func newKnownMACs(path string) *KnownMACs {
 	data, err := os.ReadFile(path)
 	if err == nil {
 		var values []string
-		if json.Unmarshal(data, &values) == nil {
+		if unmarshalErr := json.Unmarshal(data, &values); unmarshalErr != nil {
+			LogWarnf("cannot parse remembered-MAC file path=%s: %v", path, unmarshalErr)
+		} else {
 			for _, m := range values {
 				k.macs[strings.ToUpper(strings.TrimSpace(m))] = true
 			}
+			LogDebugf("loaded remembered-MAC list count=%d", len(k.macs))
 		}
+	} else if !os.IsNotExist(err) {
+		LogWarnf("cannot read remembered-MAC file path=%s: %v", path, err)
+	} else {
+		LogDebugf("remembered-MAC file does not exist yet path=%s", path)
 	}
 	return k
 }

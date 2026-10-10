@@ -31,7 +31,7 @@ var (
 
 // parseAppLogLevel reads a severity name. Unknown or empty values default to INFO.
 func parseAppLogLevel(value string) appLogLevel {
-	switch strings.ToUpper(strings.TrimSpace(value)) {
+	switch strings.ToUpper(strings.Trim(strings.TrimSpace(value), "\"'")) {
 	case "DEBUG":
 		return levelDebug
 	case "WARN", "WARNING":

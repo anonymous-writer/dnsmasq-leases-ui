@@ -206,8 +206,60 @@ The `mark-reservations` response also includes a `count` field. These endpoints 
 | `APP_VERSION` | `dev` | Version shown by the application |
 | `APP_RELEASE_DATE` | empty | Build/release date shown by the application |
 | `REPO_URL` | `https://github.com/anonymous-writer/dnsmasq-leases-ui` | Repository URL shown in the UI |
+| `LOG_LEVEL` | `INFO` | Minimum log level: `DEBUG`, `INFO`, `WARN`, or `ERROR` |
 
 The `dnsmasq.dhcphosts` file is optional. Without it, the UI still works, but reservations defined only in that file cannot be identified. Leases with a lease time of `0` are displayed as `Never` and treated as reservations.
+
+## Logging
+
+The application uses structured-by-level log messages with timestamps. Configure the minimum verbosity with the `LOG_LEVEL` environment variable:
+
+| `LOG_LEVEL` | Messages shown | Typical use |
+|---|---|---|
+| `DEBUG` | Debug, info, warnings, and errors | Temporary troubleshooting |
+| `INFO` | Info, warnings, and errors | Recommended for normal operation (default) |
+| `WARN` | Warnings and errors | Quieter operation |
+| `ERROR` | Errors only | Only important failures |
+
+If `LOG_LEVEL` is unset or contains an unknown value, the application uses `INFO`.
+
+Example in `compose.yaml`:
+
+```yaml
+services:
+  dnsmasq-leases-ui:
+    environment:
+      PORT: "3008"
+      LOG_LEVEL: "INFO"
+```
+
+Use `DEBUG` temporarily when troubleshooting:
+
+```yaml
+environment:
+  PORT: "3008"
+  LOG_LEVEL: "DEBUG"
+```
+
+View the container logs with Docker or Podman:
+
+```bash
+docker logs -f dnsmasq-leases-ui
+# or
+podman logs -f dnsmasq-leases-ui
+```
+
+Example messages:
+
+```text
+2026/10/10 16:53:38 [INFO] server listening on 0.0.0.0:3008 version=2.1.0-beta.1
+2026/10/10 16:53:39 [WARN] optional DHCP hosts file is unavailable
+2026/10/10 16:53:40 [ERROR] cannot read DHCP leases: permission denied
+```
+
+These lines illustrate the intended format. A message appears only where the corresponding logging function (`LogDebugf`, `LogInfof`, `LogWarnf`, or `LogErrorf`) is called in the source code. The application does not automatically log every HTTP request or every lease. Routine refreshes and individual device details are intentionally not logged by default to avoid noisy logs and unnecessary exposure of network information.
+
+Keep `INFO` for everyday operation and switch to `DEBUG` temporarily when extra diagnostic detail is needed.
 
 ## Building from source
 

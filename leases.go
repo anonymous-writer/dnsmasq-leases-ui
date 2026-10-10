@@ -51,6 +51,7 @@ func readLeaseEntries(leasePath, hostsPath string) ([]LeaseEntry, error) {
 	if err := s.Err(); err != nil {
 		return nil, err
 	}
+	LogDebugf("read DHCP lease entries count=%d", len(leases))
 	return leases, nil
 }
 
@@ -60,5 +61,6 @@ func readLeases(leasePath, hostsPath string) ([]LeaseEntry, error) {
 		return nil, err
 	}
 	addWebURLs(leases)
+	LogDebugf("completed device reachability checks count=%d", len(leases))
 	return leases, nil
 }
