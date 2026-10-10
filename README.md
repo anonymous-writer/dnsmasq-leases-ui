@@ -56,6 +56,7 @@ docker run -d \
   --network host \
   -e PORT=3008 \
   -v /var/lib/dnsmasq:/var/lib/dnsmasq:ro \
+  -v ./data:/data:Z \
   ghcr.io/anonymous-writer/dnsmasq-leases-ui:latest
 ```
 
@@ -80,6 +81,7 @@ services:
     network_mode: host
     volumes:
       - /var/lib/dnsmasq:/var/lib/dnsmasq:ro
+      - ./data:/data:Z
 ```
 
 Start it with `docker compose up -d` or `podman compose up -d`.
