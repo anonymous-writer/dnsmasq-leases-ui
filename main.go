@@ -492,7 +492,17 @@ func main() {
 			return
 		}
 		for i := range leases {
-			leases[i].IsNew = !known.has(leases[i].MACAddress)
+			mac := strings.TrimSpace(leases[i].MACAddress)
+			ip := net.ParseIP(leases[i].IPAddress)
+
+			// Keep IPv6 leases visible, but do not mark them as new when
+			// they have no valid MAC address to identify the device.
+			if ip != nil && ip.To4() == nil && !macRE.MatchString(mac) {
+				leases[i].IsNew = false
+				continue
+			}
+
+			leases[i].IsNew = !known.has(mac)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"leases": leases})
