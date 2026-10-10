@@ -24,6 +24,7 @@ type LeaseEntry struct {
 	Name       string `json:"name"`
 	WebURL     string `json:"webUrl"`
 	WebHostURL string `json:"webHostUrl"`
+	Status     string `json:"status"`
 }
 
 type Reservations struct{ ips, names, identifiers map[string]struct{} }
@@ -326,6 +327,11 @@ func addWebURLs(leases []LeaseEntry) {
 			defer wg.Done()
 			for n := range jobs {
 				leases[n].WebURL = checkWebUI(leases[n].IPAddress, timeout)
+				if leases[n].WebURL != "" {
+					leases[n].Status = "online"
+				} else {
+					leases[n].Status = "unknown"
+				}
 			}
 		}()
 	}
@@ -364,7 +370,7 @@ func getenv(k, d string) string {
 	return d
 }
 
-type PageData struct{ Version, ReleaseDate, RepoURL string }
+type PageData struct{ Version, ReleaseDate, RepoURL, DnsmasqVersion string }
 
 func main() {
 	leasePath := getenv("DNSMASQ_LEASES_FILE", "/var/lib/dnsmasq/dnsmasq.leases")
@@ -378,7 +384,7 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
-		data := PageData{getenv("APP_VERSION", "dev"), getenv("APP_RELEASE_DATE", ""), getenv("REPO_URL", "https://github.com/anonymous-writer/dnsmasq-leases-ui")}
+		data := PageData{getenv("APP_VERSION", "dev"), getenv("APP_RELEASE_DATE", ""), getenv("REPO_URL", "https://github.com/anonymous-writer/dnsmasq-leases-ui"), getenv("DNSMASQ_VERSION", "not configured")}
 		if err := tmpl.Execute(w, data); err != nil {
 			http.Error(w, "template error", 500)
 		}
