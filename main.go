@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,6 +30,7 @@ type LeaseEntry struct {
 	WebURL      string `json:"webUrl"`
 	WebHostURL  string `json:"webHostUrl"`
 	Status      string `json:"status"`
+	IsNew       bool   `json:"isNew"`
 }
 
 type Reservations struct{ ips, names, identifiers map[string]struct{} }
@@ -395,7 +398,54 @@ func getenv(k, d string) string {
 
 type PageData struct{ Version, ReleaseDate, RepoURL string }
 
+type KnownMACs struct {
+	mu   sync.Mutex
+	path string
+	macs map[string]bool
+}
+
+func newKnownMACs(path string) *KnownMACs {
+	k := &KnownMACs{path: path, macs: map[string]bool{}}
+	data, err := os.ReadFile(path)
+	if err == nil {
+		var values []string
+		if json.Unmarshal(data, &values) == nil {
+			for _, m := range values {
+				k.macs[strings.ToUpper(strings.TrimSpace(m))] = true
+			}
+		}
+	}
+	return k
+}
+func (k *KnownMACs) has(mac string) bool {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.macs[strings.ToUpper(strings.TrimSpace(mac))]
+}
+func (k *KnownMACs) mark(mac string) error {
+	mac = strings.ToUpper(strings.TrimSpace(mac))
+	if !macRE.MatchString(mac) {
+		return http.ErrNotSupported
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.macs[mac] = true
+	if err := os.MkdirAll(filepath.Dir(k.path), 0755); err != nil {
+		return err
+	}
+	values := make([]string, 0, len(k.macs))
+	for m := range k.macs {
+		values = append(values, m)
+	}
+	sort.Strings(values)
+	data, err := json.MarshalIndent(values, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(k.path, data, 0644)
+}
 func main() {
+	known := newKnownMACs(getenv("KNOWN_MACS_FILE", "/data/known-macs.json"))
 	leasePath := getenv("DNSMASQ_LEASES_FILE", "/var/lib/dnsmasq/dnsmasq.leases")
 	hostsPath := getenv("DNSMASQ_HOSTS_FILE", "/var/lib/dnsmasq/dnsmasq.dhcphosts")
 	port := getenv("PORT", "5000")
@@ -413,6 +463,25 @@ func main() {
 		}
 	})
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	mux.HandleFunc("/known-macs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			MAC string `json:"mac"`
+		}
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body) != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		if err := known.mark(body.MAC); err != nil {
+			http.Error(w, "cannot save known MAC (check KNOWN_MACS_FILE permissions)", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
 	mux.HandleFunc("/leases", func(w http.ResponseWriter, r *http.Request) {
 		leases, err := readLeases(leasePath, hostsPath)
 		if err != nil {
@@ -421,6 +490,9 @@ func main() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"error":"leases file unavailable"}`))
 			return
+		}
+		for i := range leases {
+			leases[i].IsNew = !known.has(leases[i].MACAddress)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"leases": leases})
