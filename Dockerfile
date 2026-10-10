@@ -23,7 +23,7 @@ COPY --from=build /dnsmasq-leases-ui /app/dnsmasq-leases-ui
 COPY templates /app/templates
 COPY static /app/static
 
-USER app
+USER root
 EXPOSE 5000
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
