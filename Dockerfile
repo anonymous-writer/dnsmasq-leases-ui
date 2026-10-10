@@ -9,7 +9,7 @@ COPY *.go ./
 
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /dnsmasq-leases-ui .
 
-FROM alpine:3.22
+FROM alpine:3.24
 RUN addgroup -S app && adduser -S -G app app
 WORKDIR /app
 
