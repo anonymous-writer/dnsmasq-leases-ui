@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"html/template"
@@ -9,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -307,6 +309,22 @@ func checkWebUI(ip string, timeout time.Duration) string {
 	}
 	return ""
 }
+
+// pingReachable performs one bounded ICMP probe. If ping is unavailable or
+// the probe cannot be performed, it returns false; callers should avoid
+// interpreting that alone as definitive proof that a device is offline.
+func pingReachable(ip string, timeout time.Duration) bool {
+	if net.ParseIP(ip) == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	// BusyBox and iputils support -c 1 and -W; the container image already
+	// provides ping in the deployment environment.
+	cmd := exec.CommandContext(ctx, "ping", "-c", "1", "-W", strconv.Itoa(max(1, int(timeout.Seconds()))), ip)
+	return cmd.Run() == nil
+}
+
 func addWebURLs(leases []LeaseEntry) {
 	if len(leases) == 0 {
 		return
@@ -327,10 +345,13 @@ func addWebURLs(leases []LeaseEntry) {
 			defer wg.Done()
 			for n := range jobs {
 				leases[n].WebURL = checkWebUI(leases[n].IPAddress, timeout)
-				if leases[n].WebURL != "" {
-					leases[n].Status = "online"
-				} else {
-					leases[n].Status = "unknown"
+				switch {
+				case leases[n].WebURL != "":
+					leases[n].Status = "online" // green: HTTP/HTTPS responded
+				case pingReachable(leases[n].IPAddress, envDuration("PING_TIMEOUT", 1200*time.Millisecond)):
+					leases[n].Status = "reachable" // yellow: host responds to ping, no web UI
+				default:
+					leases[n].Status = "offline" // red: no response to supported probes
 				}
 			}
 		}()
@@ -370,7 +391,7 @@ func getenv(k, d string) string {
 	return d
 }
 
-type PageData struct{ Version, ReleaseDate, RepoURL, DnsmasqVersion string }
+type PageData struct{ Version, ReleaseDate, RepoURL string }
 
 func main() {
 	leasePath := getenv("DNSMASQ_LEASES_FILE", "/var/lib/dnsmasq/dnsmasq.leases")
@@ -384,7 +405,7 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
-		data := PageData{getenv("APP_VERSION", "dev"), getenv("APP_RELEASE_DATE", ""), getenv("REPO_URL", "https://github.com/anonymous-writer/dnsmasq-leases-ui"), getenv("DNSMASQ_VERSION", "not configured")}
+		data := PageData{getenv("APP_VERSION", "dev"), getenv("APP_RELEASE_DATE", ""), getenv("REPO_URL", "https://github.com/anonymous-writer/dnsmasq-leases-ui")}
 		if err := tmpl.Execute(w, data); err != nil {
 			http.Error(w, "template error", 500)
 		}
