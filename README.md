@@ -22,7 +22,13 @@ A lightweight web interface for the [dnsmasq](https://thekelleys.org.uk/dnsmasq/
 - Multi-architecture Docker image: `linux/amd64` and `linux/arm64`
 - Runs as a non-root user in the provided Docker image
 
-## Quick start
+### Reachability indicator and a device details dialog.
+
+- **Green (`online`)**: HTTP or HTTPS answered.
+- **Yellow (`reachable`)**: HTTP/HTTPS did not answer, but ICMP ping did.
+- **Red (`offline`)**: neither HTTP/HTTPS nor ping answered within the configured timeouts.
+
+# Quick start
 
 For testing the latest Go development build before it becomes stable, use the `go-beta` tag instead of `latest`.
 

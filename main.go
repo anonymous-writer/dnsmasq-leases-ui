@@ -19,14 +19,15 @@ import (
 )
 
 type LeaseEntry struct {
-	StaticIP   bool   `json:"staticIP"`
-	LeaseTime  string `json:"leasetime"`
-	MACAddress string `json:"macAddress"`
-	IPAddress  string `json:"ipAddress"`
-	Name       string `json:"name"`
-	WebURL     string `json:"webUrl"`
-	WebHostURL string `json:"webHostUrl"`
-	Status     string `json:"status"`
+	StaticIP    bool   `json:"staticIP"`
+	LeaseTime   string `json:"leasetime"`
+	LeaseExpiry int64  `json:"leaseExpiry"`
+	MACAddress  string `json:"macAddress"`
+	IPAddress   string `json:"ipAddress"`
+	Name        string `json:"name"`
+	WebURL      string `json:"webUrl"`
+	WebHostURL  string `json:"webHostUrl"`
+	Status      string `json:"status"`
 }
 
 type Reservations struct{ ips, names, identifiers map[string]struct{} }
@@ -147,7 +148,8 @@ func parseLeaseLine(line string, r *Reservations) (LeaseEntry, bool) {
 	if !ok {
 		return LeaseEntry{}, false
 	}
-	return LeaseEntry{StaticIP: p[0] == "0" || r.matches(p[1], p[2], p[3], p[4]), LeaseTime: end, MACAddress: strings.ToUpper(p[1]), IPAddress: p[2], Name: p[3]}, true
+	expiry, _ := strconv.ParseInt(p[0], 10, 64)
+	return LeaseEntry{StaticIP: p[0] == "0" || r.matches(p[1], p[2], p[3], p[4]), LeaseTime: end, LeaseExpiry: expiry, MACAddress: strings.ToUpper(p[1]), IPAddress: p[2], Name: p[3]}, true
 }
 func readLeases(leasePath, hostsPath string) ([]LeaseEntry, error) {
 	f, err := os.Open(leasePath)
